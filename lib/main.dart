@@ -26,12 +26,15 @@ String dinhDangGio(DateTime time) {
   return '$h:$m';
 }
 
-String dinhDangNgayRutGon(DateTime time) {
+// Hiển thị ngày tháng năm đầy đủ (dd/MM/yyyy)
+String dinhDangNgayDayDu(DateTime time) {
   final d = time.day.toString().padLeft(2, '0');
   final mo = time.month.toString().padLeft(2, '0');
-  final y = time.year.toString().substring(2);
+  final y = time.year.toString();
   return '$d/$mo/$y';
 }
+
+// =================== CLOCK ===================
 
 class ClockText extends StatefulWidget {
   final TextStyle? style;
@@ -86,7 +89,7 @@ class _ClockTextState extends State<ClockText> {
   }
 }
 
-// =================== CHI TIEU MODEL ===================
+// =================== MODEL ===================
 
 class ChiTieuItem {
   final int soTien;
@@ -105,7 +108,7 @@ class ChiTieuItem {
   }
 }
 
-// =================== CATEGORY MODEL ===================
+// =================== CATEGORY ===================
 
 enum ChiTieuMuc { nhaTro, hocPhi, thucAn, doUong, xang, muaSam }
 
@@ -145,7 +148,7 @@ extension ChiTieuMucX on ChiTieuMuc {
   }
 }
 
-// =================== BEAUTY BACKGROUND ===================
+// =================== BACKGROUND ===================
 
 class _WatchBackground extends StatelessWidget {
   const _WatchBackground();
@@ -156,7 +159,7 @@ class _WatchBackground extends StatelessWidget {
       decoration: const BoxDecoration(
         gradient: RadialGradient(
           center: Alignment(0, -0.35),
-          radius: 1.0,
+          radius: 1,
           colors: [Color(0xFF000000), Colors.black],
         ),
       ),
@@ -236,6 +239,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                 const _WatchBackground(),
                 Column(
                   children: [
+                    // ✅ Màn hình chính: padding top 4
                     const SizedBox(height: 4),
                     const ClockText(showSeconds: false),
                     const SizedBox(height: 6),
@@ -488,13 +492,14 @@ class ChiTieuTheoMucScreen extends StatefulWidget {
 }
 
 class _ListRow {
-  final String? header;
+  final String? dateHeader;
+  final int? dailyTotal;
   final ChiTieuItem? item;
 
-  _ListRow.header(this.header) : item = null;
-  _ListRow.item(this.item) : header = null;
+  _ListRow.header(this.dateHeader, this.dailyTotal) : item = null;
+  _ListRow.item(this.item) : dateHeader = null, dailyTotal = null;
 
-  bool get isHeader => header != null;
+  bool get isHeader => dateHeader != null;
 }
 
 class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
@@ -512,24 +517,25 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
   List<_ListRow> _nhomTheoNgay(List<ChiTieuItem> items) {
     final sorted = List<ChiTieuItem>.from(items);
     sorted.sort((a, b) => b.thoiGian.compareTo(a.thoiGian));
+
     final List<_ListRow> rows = [];
-    DateTime? previousDay;
+    final Map<String, List<ChiTieuItem>> grouped = {};
 
-    for (final item in sorted) {
-      final currentDay = DateTime(
-        item.thoiGian.year,
-        item.thoiGian.month,
-        item.thoiGian.day,
-      );
-
-      if (previousDay == null ||
-          currentDay.millisecondsSinceEpoch !=
-              previousDay.millisecondsSinceEpoch) {
-        rows.add(_ListRow.header(dinhDangNgayRutGon(item.thoiGian)));
-        previousDay = currentDay;
+    for (var item in sorted) {
+      final dateKey = dinhDangNgayDayDu(item.thoiGian);
+      if (!grouped.containsKey(dateKey)) {
+        grouped[dateKey] = [];
       }
+      grouped[dateKey]!.add(item);
+    }
 
-      rows.add(_ListRow.item(item));
+    for (var entry in grouped.entries) {
+      final dateString = entry.key;
+      final dailyList = entry.value;
+      final dailySum = dailyList.fold(0, (sum, item) => sum + item.soTien);
+
+      rows.add(_ListRow.header(dateString, dailySum));
+      rows.addAll(dailyList.map((e) => _ListRow.item(e)));
     }
 
     return rows;
@@ -648,7 +654,8 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                   ),
                   Column(
                     children: [
-                      const SizedBox(height: 10),
+                      // ✅ Màn hình chi tiết: Sửa padding top từ 10 thành 4 để khớp màn hình chính
+                      const SizedBox(height: 4),
                       const ClockText(),
                       const SizedBox(height: 8),
                       Row(
@@ -689,17 +696,32 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                           itemCount: rows.length,
                           itemBuilder: (context, index) {
                             final row = rows[index];
+
                             if (row.isHeader) {
                               return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                child: Text(
-                                  row.header!,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 8, horizontal: 2),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      row.dateHeader!,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${dinhDangSo(row.dailyTotal!)} đ',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               );
                             }
@@ -730,15 +752,16 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                   border: dangChonXoa
                                       ? Border.all(
-                                          color: Colors.redAccent.withOpacity(0.5),
+                                          color: Colors.redAccent
+                                              .withOpacity(0.5),
                                           width: 1)
                                       : null,
                                 ),
                                 child: Row(
                                   children: [
                                     ConstrainedBox(
-                                      constraints:
-                                          BoxConstraints(maxWidth: dateMaxWidth),
+                                      constraints: BoxConstraints(
+                                          maxWidth: dateMaxWidth),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.centerLeft,
@@ -801,44 +824,30 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                                   batDauChonXoa();
                                 }
                               },
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: dangChonXoa
-                                      ? const Color(0xFF555555)
-                                      : (danhSachChi.isEmpty
-                                          ? const Color(0xFF333333)
-                                          : const Color(0xFFE57373)),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  dangChonXoa ? Icons.close : Icons.delete_outline,
-                                  color: danhSachChi.isEmpty && !dangChonXoa
-                                      ? Colors.white38
-                                      : Colors.white,
-                                  size: 22,
-                                ),
+                              child: _circleBtn(
+                                dangChonXoa
+                                    ? Icons.close
+                                    : Icons.delete_outline,
+                                dangChonXoa
+                                    ? const Color(0xFF555555)
+                                    : (danhSachChi.isEmpty
+                                        ? const Color(0xFF333333)
+                                        : const Color(0xFFE57373)),
+                                colorIcon: danhSachChi.isEmpty && !dangChonXoa
+                                    ? Colors.white38
+                                    : Colors.white,
                               ),
                             ),
                             const SizedBox(width: 24),
                             GestureDetector(
                               onTap: dangChonXoa ? null : themChiTieu,
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: dangChonXoa
-                                      ? const Color(0xFF333333)
-                                      : const Color(0xFF4CAF93),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.add,
-                                  color:
-                                      dangChonXoa ? Colors.white38 : Colors.white,
-                                  size: 24,
-                                ),
+                              child: _circleBtn(
+                                Icons.add,
+                                dangChonXoa
+                                    ? const Color(0xFF333333)
+                                    : const Color(0xFF4CAF93),
+                                colorIcon:
+                                    dangChonXoa ? Colors.white38 : Colors.white,
                               ),
                             ),
                           ],
@@ -852,6 +861,15 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _circleBtn(IconData icon, Color bg, {Color colorIcon = Colors.white}) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Icon(icon, color: colorIcon, size: 22),
     );
   }
 }
@@ -912,36 +930,14 @@ class XacNhanXoaScreen extends StatelessWidget {
                       children: [
                         GestureDetector(
                           onTap: () => Navigator.pop(context, true),
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE57373),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                          ),
+                          child: _circleBtn(
+                              Icons.delete_outline, const Color(0xFFE57373)),
                         ),
                         const SizedBox(width: 32),
                         GestureDetector(
                           onTap: () => Navigator.pop(context, false),
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF666666),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                          ),
+                          child:
+                              _circleBtn(Icons.close, const Color(0xFF666666)),
                         ),
                       ],
                     ),
@@ -952,6 +948,15 @@ class XacNhanXoaScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _circleBtn(IconData icon, Color color) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      child: Icon(icon, color: Colors.white, size: 24),
     );
   }
 }
@@ -980,6 +985,14 @@ class _NhapSoTienScreenState extends State<NhapSoTienScreen> {
         widget.soTienBanDau != null ? widget.soTienBanDau.toString() : '';
     controller = TextEditingController(text: initText);
 
+    controller.addListener(() {
+      final len = controller.text.length;
+      final sel = controller.selection;
+      if (sel.start > len || sel.end > len) {
+        controller.selection = TextSelection.collapsed(offset: len);
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _focusNode.requestFocus();
@@ -1004,7 +1017,11 @@ class _NhapSoTienScreenState extends State<NhapSoTienScreen> {
   int? _layGiaTriSo() {
     final text = controller.text.trim();
     if (text.isEmpty) return null;
-    return int.tryParse(text);
+    try {
+      return int.parse(text);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -1034,7 +1051,6 @@ class _NhapSoTienScreenState extends State<NhapSoTienScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 30),
                     child: TextField(
                       focusNode: _focusNode,
-                      autofocus: false,
                       controller: controller,
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -1062,39 +1078,12 @@ class _NhapSoTienScreenState extends State<NhapSoTienScreen> {
                     children: [
                       GestureDetector(
                         onTap: () => Navigator.pop(context),
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF555555),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
+                        child: _circleBtn(Icons.close, const Color(0xFF555555)),
                       ),
                       const SizedBox(width: 32),
                       GestureDetector(
-                        onTap: () {
-                          final value = _layGiaTriSo();
-                          Navigator.pop(context, value);
-                        },
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF4CAF93),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.check,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
+                        onTap: () => Navigator.pop(context, _layGiaTriSo()),
+                        child: _circleBtn(Icons.check, const Color(0xFF4CAF93)),
                       ),
                     ],
                   ),
@@ -1104,6 +1093,15 @@ class _NhapSoTienScreenState extends State<NhapSoTienScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _circleBtn(IconData icon, Color color) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      child: Icon(icon, color: Colors.white, size: 24),
     );
   }
 }
