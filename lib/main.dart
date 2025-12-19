@@ -6,9 +6,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(
-    const MaterialApp(
+    MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: ChiTieuApp(),
+      title: 'VCC Finance',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+          },
+        ),
+      ),
+      home: const ChiTieuApp(),
     ),
   );
 }

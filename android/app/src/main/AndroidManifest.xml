@@ -11,7 +11,7 @@
     <application
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:label="quan_ly_chi_tieu">
+        android:label="VCC Finance">
 
         <!-- Báo với Play Store đây là ứng dụng độc lập trên Wear -->
         <meta-data
