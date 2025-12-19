@@ -33,6 +33,8 @@ String dinhDangNgayDayDu(DateTime time) {
   return '$d/$mo/$y';
 }
 
+String getMonthKey(DateTime date) => '${date.month}/${date.year}';
+
 // =================== CLOCK ===================
 
 class ClockText extends StatefulWidget {
@@ -174,6 +176,14 @@ class _WatchBackground extends StatelessWidget {
   }
 }
 
+// =================== HELPER ===================
+
+class HistoryEntry {
+  final ChiTieuMuc muc;
+  final ChiTieuItem item;
+  HistoryEntry({required this.muc, required this.item});
+}
+
 // =================== HOME (GRID CATEGORIES) ===================
 
 class ChiTieuApp extends StatefulWidget {
@@ -184,70 +194,157 @@ class ChiTieuApp extends StatefulWidget {
 }
 
 class _ChiTieuAppState extends State<ChiTieuApp> {
+  DateTime _currentDay = DateTime.now();
   final Map<ChiTieuMuc, List<ChiTieuItem>> _chiTheoMuc = {
     for (final muc in ChiTieuMuc.values) muc: <ChiTieuItem>[],
   };
+
+  // Lưu lịch sử: tháng -> ngày -> danh sách HistoryEntry
+  final Map<String, Map<String, List<HistoryEntry>>> _lichSuThang = {};
+
+  @override
+  void initState() {
+    super.initState();
+    Timer.periodic(const Duration(minutes: 1), (_) => _checkNewDay());
+  }
+
+  void _checkNewDay() {
+    final now = DateTime.now();
+    if (now.day != _currentDay.day ||
+        now.month != _currentDay.month ||
+        now.year != _currentDay.year) {
+      if (mounted) {
+        setState(() {
+          _luuLichSuNgayHomQua();
+          _currentDay = DateTime(now.year, now.month, now.day);
+        });
+      }
+    }
+  }
+
+  // Lưu dữ liệu của ngày cũ vào lịch sử tháng
+  void _luuLichSuNgayHomQua() {
+    final ngayHomQua = _currentDay;
+    final monthKey = getMonthKey(ngayHomQua);
+    final dayKey = dinhDangNgayDayDu(ngayHomQua);
+
+    final List<HistoryEntry> entries = [];
+    _chiTheoMuc.forEach((muc, items) {
+      if (muc == ChiTieuMuc.lichSu) return;
+      final itemsNgayHomQua = items.where((item) =>
+          item.thoiGian.day == ngayHomQua.day &&
+          item.thoiGian.month == ngayHomQua.month &&
+          item.thoiGian.year == ngayHomQua.year).toList();
+      for (final it in itemsNgayHomQua) {
+        entries.add(HistoryEntry(muc: muc, item: it));
+      }
+    });
+
+    if (entries.isNotEmpty) {
+      _lichSuThang.putIfAbsent(monthKey, () => {});
+      _lichSuThang[monthKey]![dayKey] = entries;
+
+      // Xóa các khoản chi của ngày hôm qua khỏi dữ liệu hiện tại
+      for (final muc in ChiTieuMuc.values) {
+        if (muc == ChiTieuMuc.lichSu) continue;
+        _chiTheoMuc[muc] = _chiTheoMuc[muc]!
+            .where((item) =>
+                !(item.thoiGian.day == ngayHomQua.day &&
+                  item.thoiGian.month == ngayHomQua.month &&
+                  item.thoiGian.year == ngayHomQua.year))
+            .toList();
+      }
+    }
+  }
+
+  // Cập nhật lịch sử ngay khi thêm/sửa/xóa trong ngày hiện tại
+  void _capNhatLichSuSauThayDoi(ChiTieuMuc muc, List<ChiTieuItem> danhSachMoi) {
+    // Chỉ giữ lại khoản chi trong ngày hiện tại cho muc này
+    _chiTheoMuc[muc] = danhSachMoi.where((item) =>
+        item.thoiGian.day == _currentDay.day &&
+        item.thoiGian.month == _currentDay.month &&
+        item.thoiGian.year == _currentDay.year).toList();
+
+    final monthKey = getMonthKey(DateTime.now());
+    final dayKey = dinhDangNgayDayDu(DateTime.now());
+
+    final List<HistoryEntry> allCurrentDayEntries = [];
+    _chiTheoMuc.forEach((mucKey, items) {
+      if (mucKey == ChiTieuMuc.lichSu) return;
+      for (final it in items.where((item) =>
+          item.thoiGian.day == _currentDay.day &&
+          item.thoiGian.month == _currentDay.month &&
+          item.thoiGian.year == _currentDay.year)) {
+        allCurrentDayEntries.add(HistoryEntry(muc: mucKey, item: it));
+      }
+    });
+
+    _lichSuThang.putIfAbsent(monthKey, () => {});
+    _lichSuThang[monthKey]![dayKey] = allCurrentDayEntries;
+    setState(() {});
+  }
 
   int _tongMuc(ChiTieuMuc muc) {
     final list = _chiTheoMuc[muc] ?? <ChiTieuItem>[];
     return list.fold(0, (a, b) => a + b.soTien);
   }
 
-  int get _tongTatCaTrongThang {
-    DateTime now = DateTime.now();
-    int month = now.month;
-    int year = now.year;
-
-    // Không tính mục Lịch sử vào tổng tiền
+  int get _tongHomNay {
     return _chiTheoMuc.entries.fold<int>(
       0,
       (sum, entry) {
         if (entry.key == ChiTieuMuc.lichSu) return sum;
-        return sum +
-            entry.value.fold<int>(
-              0,
-              (a, b) =>
-                  (b.thoiGian.month == month && b.thoiGian.year == year)
-                      ? a + b.soTien
-                      : a,
-            );
+        return sum + entry.value.fold<int>(
+          0,
+          (a, b) => (b.thoiGian.day == _currentDay.day &&
+                     b.thoiGian.month == _currentDay.month &&
+                     b.thoiGian.year == _currentDay.year)
+                 ? a + b.soTien
+                 : a,
+        );
       },
     );
   }
 
   Future<void> _moMuc(ChiTieuMuc muc) async {
-    // Nếu chọn Lịch sử, mở màn hình thống kê đặc biệt
     if (muc == ChiTieuMuc.lichSu) {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => LichSuScreen(allData: _chiTheoMuc),
+          builder: (_) => LichSuScreen(
+            lichSuThang: _lichSuThang,
+            currentDay: _currentDay,
+            currentData: _chiTheoMuc,
+          ),
         ),
       );
       return;
     }
 
-    // Các mục bình thường
+    final danhSachChiHienTai = (_chiTheoMuc[muc] ?? []).where((item) =>
+        item.thoiGian.day == _currentDay.day &&
+        item.thoiGian.month == _currentDay.month &&
+        item.thoiGian.year == _currentDay.year).toList();
+
     final updated = await Navigator.push<List<ChiTieuItem>>(
       context,
       MaterialPageRoute(
         builder: (_) => ChiTieuTheoMucScreen(
           muc: muc,
-          danhSachChiBanDau: _chiTheoMuc[muc] ?? const <ChiTieuItem>[],
+          danhSachChiBanDau: danhSachChiHienTai,
+          currentDay: _currentDay,
+          onDataChanged: (newList) => _capNhatLichSuSauThayDoi(muc, newList),
         ),
       ),
     );
 
     if (updated != null) {
-      setState(() => _chiTheoMuc[muc] = updated);
+      _capNhatLichSuSauThayDoi(muc, updated);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    DateTime now = DateTime.now();
-    final currentMonth = now.month;
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -269,7 +366,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          'Tổng chi tiêu Tháng $currentMonth:',
+                          'Tổng chi tiêu ${_currentDay.day}/${_currentDay.month}:',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
@@ -286,7 +383,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          '${dinhDangSo(_tongTatCaTrongThang)} đ',
+                          '${dinhDangSo(_tongHomNay)} đ',
                           style: const TextStyle(
                             color: Color(0xFFF08080),
                             fontSize: 20,
@@ -303,7 +400,6 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                         itemCount: ChiTieuMuc.values.length,
                         itemBuilder: (context, i) {
                           final muc = ChiTieuMuc.values[i];
-                          // Mục Lịch sử luôn = 0 để hiện icon to
                           final tongMuc =
                               (muc == ChiTieuMuc.lichSu) ? 0 : _tongMuc(muc);
 
@@ -499,199 +595,253 @@ class _CategoryButton extends StatelessWidget {
   }
 }
 
-// =================== LỊCH SỬ CHI TIÊU SCREEN (FIXED OVERFLOW) ===================
+// =================== LỊCH SỬ CHI TIÊU SCREEN ===================
 
 class LichSuScreen extends StatelessWidget {
-  final Map<ChiTieuMuc, List<ChiTieuItem>> allData;
+  final Map<String, Map<String, List<HistoryEntry>>> lichSuThang;
+  final DateTime currentDay;
+  final Map<ChiTieuMuc, List<ChiTieuItem>> currentData; // để lấy khoản chi trong ngày hiện tại nếu có
 
-  const LichSuScreen({super.key, required this.allData});
+  const LichSuScreen({
+    super.key,
+    required this.lichSuThang,
+    required this.currentDay,
+    required this.currentData,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, Map<ChiTieuMuc, int>> monthlyData = {};
+    final edge = (MediaQuery.of(context).size.width * 0.10).clamp(16.0, 36.0);
 
-    allData.forEach((muc, items) {
-      if (muc == ChiTieuMuc.lichSu) return;
-      for (var item in items) {
-        final key = '${item.thoiGian.month}/${item.thoiGian.year}';
-        if (!monthlyData.containsKey(key)) {
-          monthlyData[key] = {};
+    // Kết hợp lịch sử đã lưu + dữ liệu ngày hiện tại
+    final Map<String, Map<String, List<HistoryEntry>>> combined = {
+      for (final e in lichSuThang.entries)
+        e.key: {
+          for (final d in e.value.entries) d.key: List<HistoryEntry>.from(d.value)
         }
-        monthlyData[key]![muc] = (monthlyData[key]![muc] ?? 0) + item.soTien;
+    };
+
+    // Thêm dữ liệu ngày hiện tại (nếu có) vào combined
+    final monthKeyNow = getMonthKey(currentDay);
+    final dayKeyNow = dinhDangNgayDayDu(currentDay);
+    final List<HistoryEntry> currentDayEntries = [];
+    currentData.forEach((muc, items) {
+      if (muc == ChiTieuMuc.lichSu) return;
+      for (final it in items.where((item) =>
+          item.thoiGian.day == currentDay.day &&
+          item.thoiGian.month == currentDay.month &&
+          item.thoiGian.year == currentDay.year)) {
+        currentDayEntries.add(HistoryEntry(muc: muc, item: it));
       }
     });
+    currentDayEntries.sort((a, b) => a.item.thoiGian.compareTo(b.item.thoiGian));
+    if (currentDayEntries.isNotEmpty) {
+      combined.putIfAbsent(monthKeyNow, () => {});
+      combined[monthKeyNow]![dayKeyNow] = currentDayEntries;
+    }
 
-    final sortedMonths = monthlyData.keys.toList()
+    // Sắp xếp tháng
+    final sortedMonths = combined.keys.toList()
       ..sort((a, b) {
-        final partsA = a.split('/');
-        final partsB = b.split('/');
-        final dateA = DateTime(int.parse(partsA[1]), int.parse(partsA[0]));
-        final dateB = DateTime(int.parse(partsB[1]), int.parse(partsB[0]));
-        return dateB.compareTo(dateA);
+        final pa = a.split('/');
+        final pb = b.split('/');
+        final da = DateTime(int.parse(pa[1]), int.parse(pa[0]));
+        final db = DateTime(int.parse(pb[1]), int.parse(pb[0]));
+        return db.compareTo(da);
       });
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final edge =
-                (constraints.maxWidth * 0.10).clamp(16.0, 36.0).toDouble();
-
-            return Stack(
-              children: [
-                const _WatchBackground(),
-                Positioned(
-                  top: 12,
-                  left: edge,
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Colors.white70,
-                      size: 16,
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                  ),
+        child: Stack(
+          children: [
+            const _WatchBackground(),
+            Positioned(
+              top: 12,
+              left: edge,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white70,
+                  size: 16,
                 ),
-                Column(
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+            Column(
+              children: [
+                const SizedBox(height: 4),
+                const ClockText(),
+                const SizedBox(height: 8),
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SizedBox(height: 4),
-                    const ClockText(),
-                    const SizedBox(height: 8),
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.history_rounded,
-                            color: Colors.white, size: 18),
-                        SizedBox(width: 6),
-                        Text(
-                          'Lịch sử',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: sortedMonths.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'Chưa có dữ liệu',
-                                style: TextStyle(color: Colors.white38),
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: EdgeInsets.fromLTRB(edge, 0, edge, 20),
-                              itemCount: sortedMonths.length,
-                              itemBuilder: (context, index) {
-                                final monthKey = sortedMonths[index];
-                                final categoryMap = monthlyData[monthKey]!;
-
-                                final totalMonth = categoryMap.values
-                                    .fold(0, (a, b) => a + b);
-
-                                final sortedCategories =
-                                    categoryMap.entries.toList()
-                                      ..sort(
-                                          (a, b) => b.value.compareTo(a.value));
-
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white10,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // HEADER FIX OVERFLOW
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white12,
-                                          borderRadius:
-                                              const BorderRadius.vertical(
-                                                  top: Radius.circular(16)),
-                                        ),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              'Tháng $monthKey',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            // Fix: Dùng Flexible + FittedBox
-                                            Flexible(
-                                              child: FittedBox(
-                                                fit: BoxFit.scaleDown,
-                                                child: Text(
-                                                  '${dinhDangSo(totalMonth)} đ',
-                                                  style: const TextStyle(
-                                                    color: Color(0xFFF08080),
-                                                    fontWeight:
-                                                        FontWeight.bold,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      // List Categories
-                                      ...sortedCategories.map((entry) {
-                                        return Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 8),
-                                          child: Row(
-                                            children: [
-                                              Icon(entry.key.icon,
-                                                  size: 16,
-                                                  color: Colors.white70),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  entry.key.ten,
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              ),
-                                              Text(
-                                                '${dinhDangSo(entry.value)} đ',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      }).toList(),
-                                      const SizedBox(height: 4),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                    Icon(Icons.history_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 6),
+                    Text(
+                      'Lịch sử',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: sortedMonths.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'Chưa có dữ liệu',
+                            style: TextStyle(color: Colors.white38),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.fromLTRB(edge, 0, edge, 20),
+                          itemCount: sortedMonths.length,
+                          itemBuilder: (context, monthIndex) {
+                            final monthKey = sortedMonths[monthIndex];
+                            final daysData = combined[monthKey]!;
+
+                            // Tổng tiền tháng
+                            final totalMonth = daysData.values
+                                .expand((lst) => lst)
+                                .fold(0, (s, e) => s + e.item.soTien);
+
+                            // Sắp xếp ngày
+                            final sortedDays = daysData.keys.toList()
+                              ..sort((a, b) {
+                                final pa = a.split('/');
+                                final pb = b.split('/');
+                                final da = DateTime(int.parse(pa[2]), int.parse(pa[1]), int.parse(pa[0]));
+                                final db = DateTime(int.parse(pb[2]), int.parse(pb[1]), int.parse(pb[0]));
+                                return db.compareTo(da);
+                              });
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white10,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Header tháng
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white12,
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Tháng $monthKey',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                        Flexible(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: Text(
+                                              '${dinhDangSo(totalMonth)} đ',
+                                              style: const TextStyle(
+                                                color: Color(0xFFF08080),
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Danh sách ngày
+                                  ListView.builder(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    itemCount: sortedDays.length,
+                                    itemBuilder: (context, dayIndex) {
+                                      final dayKey = sortedDays[dayIndex];
+                                      final itemsOnDay = daysData[dayKey]!;
+
+                                      // Không hiển thị tổng tiền bên phải ngày nữa
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Ngày ${dayKey.split('/')[0]}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            // Danh sách khoản chi trong ngày
+                                            ListView.builder(
+                                              shrinkWrap: true,
+                                              physics: const NeverScrollableScrollPhysics(),
+                                              itemCount: itemsOnDay.length,
+                                              itemBuilder: (context, itemIndex) {
+                                                final entry = itemsOnDay[itemIndex];
+                                                final timeText = dinhDangGio(entry.item.thoiGian);
+                                                final moneyText = '${dinhDangSo(entry.item.soTien)} đ';
+                                                return Padding(
+                                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                                  child: Row(
+                                                    children: [
+                                                      Text(
+                                                        timeText,
+                                                        style: const TextStyle(
+                                                          color: Colors.white54,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Icon(entry.muc.icon, size: 16, color: Colors.white70),
+                                                      const Spacer(),
+                                                      Text(
+                                                        moneyText,
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                            const SizedBox(height: 8),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
               ],
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
@@ -702,12 +852,16 @@ class LichSuScreen extends StatelessWidget {
 
 class ChiTieuTheoMucScreen extends StatefulWidget {
   final ChiTieuMuc muc;
-  final List<ChiTieuItem> danhSachChiBanDau;
+  final List<ChiTieuItem> danhSachChiBanDau; // chỉ khoản chi ngày hiện tại
+  final DateTime currentDay;
+  final Function(List<ChiTieuItem>)? onDataChanged;
 
   const ChiTieuTheoMucScreen({
     super.key,
     required this.muc,
     required this.danhSachChiBanDau,
+    required this.currentDay,
+    this.onDataChanged,
   });
 
   @override
@@ -746,18 +900,23 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
 
     for (var item in sorted) {
       final dateKey = dinhDangNgayDayDu(item.thoiGian);
-      if (!grouped.containsKey(dateKey)) {
-        grouped[dateKey] = [];
-      }
+      grouped.putIfAbsent(dateKey, () => []);
       grouped[dateKey]!.add(item);
     }
 
-    for (var entry in grouped.entries) {
-      final dateString = entry.key;
-      final dailyList = entry.value;
-      final dailySum = dailyList.fold(0, (sum, item) => sum + item.soTien);
+    final sortedDateKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        final pa = a.split('/');
+        final pb = b.split('/');
+        final da = DateTime(int.parse(pa[1]), int.parse(pa[0]));
+        final db = DateTime(int.parse(pb[1]), int.parse(pb[0]));
+        return db.compareTo(da);
+      });
 
-      rows.add(_ListRow.header(dateString, dailySum));
+    for (var dateKey in sortedDateKeys) {
+      final dailyList = grouped[dateKey]!;
+      final dailySum = dailyList.fold(0, (sum, item) => sum + item.soTien);
+      rows.add(_ListRow.header(dateKey, dailySum));
       rows.addAll(dailyList.map((e) => _ListRow.item(e)));
     }
 
@@ -773,18 +932,17 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
     if (soTien != null && soTien > 0) {
       setState(() {
         danhSachChi.add(ChiTieuItem(soTien: soTien, thoiGian: DateTime.now()));
+        widget.onDataChanged?.call(danhSachChi);
       });
     }
   }
 
   Future<void> chinhSuaChiTieu(int index) async {
     if (dangChonXoa) return;
-
     final soTienMoi = await Navigator.push<int>(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            NhapSoTienScreen(soTienBanDau: danhSachChi[index].soTien),
+        builder: (_) => NhapSoTienScreen(soTienBanDau: danhSachChi[index].soTien),
       ),
     );
 
@@ -794,6 +952,7 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
           soTien: soTienMoi,
           thoiGian: DateTime.now(),
         );
+        widget.onDataChanged?.call(danhSachChi);
       });
     }
   }
@@ -826,6 +985,7 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
         if (danhSachChi.isEmpty) {
           dangChonXoa = false;
         }
+        widget.onDataChanged?.call(danhSachChi);
       });
     }
   }
@@ -840,6 +1000,7 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
           huyChonXoa();
           return false;
         }
+        widget.onDataChanged?.call(danhSachChi);
         Navigator.pop(context, danhSachChi);
         return false;
       },
@@ -870,6 +1031,7 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                         if (dangChonXoa) {
                           huyChonXoa();
                         } else {
+                          widget.onDataChanged?.call(danhSachChi);
                           Navigator.pop(context, danhSachChi);
                         }
                       },
@@ -935,7 +1097,6 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    // Fix: Thêm Flexible + FittedBox ở đây luôn cho chắc chắn
                                     Flexible(
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
