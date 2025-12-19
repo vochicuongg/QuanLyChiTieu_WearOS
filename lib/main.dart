@@ -259,7 +259,6 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
 
   // Cập nhật lịch sử ngay khi thêm/sửa/xóa trong ngày hiện tại
   void _capNhatLichSuSauThayDoi(ChiTieuMuc muc, List<ChiTieuItem> danhSachMoi) {
-    // Chỉ giữ lại khoản chi trong ngày hiện tại cho muc này
     _chiTheoMuc[muc] = danhSachMoi.where((item) =>
         item.thoiGian.day == _currentDay.day &&
         item.thoiGian.month == _currentDay.month &&
@@ -597,10 +596,10 @@ class _CategoryButton extends StatelessWidget {
 
 // =================== LỊCH SỬ CHI TIÊU SCREEN ===================
 
-class LichSuScreen extends StatelessWidget {
+class LichSuScreen extends StatefulWidget {
   final Map<String, Map<String, List<HistoryEntry>>> lichSuThang;
   final DateTime currentDay;
-  final Map<ChiTieuMuc, List<ChiTieuItem>> currentData; // để lấy khoản chi trong ngày hiện tại nếu có
+  final Map<ChiTieuMuc, List<ChiTieuItem>> currentData;
 
   const LichSuScreen({
     super.key,
@@ -610,27 +609,34 @@ class LichSuScreen extends StatelessWidget {
   });
 
   @override
+  State<LichSuScreen> createState() => _LichSuScreenState();
+}
+
+class _LichSuScreenState extends State<LichSuScreen> {
+  final Set<String> _expandedDayKeys = {}; // monthKey|dayKey
+
+  @override
   Widget build(BuildContext context) {
     final edge = (MediaQuery.of(context).size.width * 0.10).clamp(16.0, 36.0);
 
     // Kết hợp lịch sử đã lưu + dữ liệu ngày hiện tại
     final Map<String, Map<String, List<HistoryEntry>>> combined = {
-      for (final e in lichSuThang.entries)
+      for (final e in widget.lichSuThang.entries)
         e.key: {
           for (final d in e.value.entries) d.key: List<HistoryEntry>.from(d.value)
         }
     };
 
-    // Thêm dữ liệu ngày hiện tại (nếu có) vào combined
-    final monthKeyNow = getMonthKey(currentDay);
-    final dayKeyNow = dinhDangNgayDayDu(currentDay);
+    // Thêm dữ liệu ngày hiện tại (nếu có)
+    final monthKeyNow = getMonthKey(widget.currentDay);
+    final dayKeyNow = dinhDangNgayDayDu(widget.currentDay);
     final List<HistoryEntry> currentDayEntries = [];
-    currentData.forEach((muc, items) {
+    widget.currentData.forEach((muc, items) {
       if (muc == ChiTieuMuc.lichSu) return;
       for (final it in items.where((item) =>
-          item.thoiGian.day == currentDay.day &&
-          item.thoiGian.month == currentDay.month &&
-          item.thoiGian.year == currentDay.year)) {
+          item.thoiGian.day == widget.currentDay.day &&
+          item.thoiGian.month == widget.currentDay.month &&
+          item.thoiGian.year == widget.currentDay.year)) {
         currentDayEntries.add(HistoryEntry(muc: muc, item: it));
       }
     });
@@ -762,7 +768,7 @@ class LichSuScreen extends StatelessWidget {
                                       ],
                                     ),
                                   ),
-                                  // Danh sách ngày
+                                  // Danh sách ngày (accordion)
                                   ListView.builder(
                                     shrinkWrap: true,
                                     physics: const NeverScrollableScrollPhysics(),
@@ -770,64 +776,120 @@ class LichSuScreen extends StatelessWidget {
                                     itemBuilder: (context, dayIndex) {
                                       final dayKey = sortedDays[dayIndex];
                                       final itemsOnDay = daysData[dayKey]!;
+                                      final dayToggleKey = '$monthKey|$dayKey';
+                                      final expanded = _expandedDayKeys.contains(dayToggleKey);
 
-                                      // Không hiển thị tổng tiền bên phải ngày nữa
+                                      // Nhóm theo danh mục
+                                      final Map<ChiTieuMuc, List<HistoryEntry>> groupByCategory = {};
+                                      for (final entry in itemsOnDay) {
+                                        groupByCategory.putIfAbsent(entry.muc, () => []);
+                                        groupByCategory[entry.muc]!.add(entry);
+                                      }
+
                                       return Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'Ngày ${dayKey.split('/')[0]}',
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
+                                            // Header ngày (tappable)
+                                            InkWell(
+                                              onTap: () {
+                                                setState(() {
+                                                  if (expanded) {
+                                                    _expandedDayKeys.remove(dayToggleKey);
+                                                  } else {
+                                                    _expandedDayKeys.add(dayToggleKey);
+                                                  }
+                                                });
+                                              },
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Text(
+                                                      'Ngày ${dayKey.split('/')[0]}',
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    Icon(
+                                                      expanded
+                                                          ? Icons.keyboard_arrow_up_rounded
+                                                          : Icons.keyboard_arrow_down_rounded,
+                                                      color: Colors.white54,
+                                                      size: 16,
+                                                    ),
+                                                  ],
                                                 ),
-                                              ],
+                                              ),
                                             ),
-                                            const SizedBox(height: 4),
-                                            // Danh sách khoản chi trong ngày
-                                            ListView.builder(
-                                              shrinkWrap: true,
-                                              physics: const NeverScrollableScrollPhysics(),
-                                              itemCount: itemsOnDay.length,
-                                              itemBuilder: (context, itemIndex) {
-                                                final entry = itemsOnDay[itemIndex];
-                                                final timeText = dinhDangGio(entry.item.thoiGian);
-                                                final moneyText = '${dinhDangSo(entry.item.soTien)} đ';
+                                            if (expanded) ...[
+                                              const SizedBox(height: 4),
+                                              // Mỗi nhóm danh mục
+                                              ...groupByCategory.entries.map((catEntry) {
+                                                final muc = catEntry.key;
+                                                final entries = List<HistoryEntry>.from(catEntry.value)
+                                                  ..sort((a, b) => a.item.thoiGian.compareTo(b.item.thoiGian));
+                                                final totalCat = entries.fold(0, (s, e) => s + e.item.soTien);
+
                                                 return Padding(
-                                                  padding: const EdgeInsets.symmetric(vertical: 4),
-                                                  child: Row(
+                                                  padding: const EdgeInsets.only(bottom: 6),
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      Text(
-                                                        timeText,
-                                                        style: const TextStyle(
-                                                          color: Colors.white54,
-                                                          fontSize: 12,
-                                                        ),
+                                                      Row(
+                                                        children: [
+                                                          Icon(muc.icon, size: 16, color: Colors.white70),
+                                                          const SizedBox(width: 6),
+                                                          // Chỉ icon + tổng tiền nhóm
+                                                          Text(
+                                                            '${dinhDangSo(totalCat)} đ',
+                                                            style: const TextStyle(
+                                                              color: Colors.white,
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.w600,
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
-                                                      const SizedBox(width: 8),
-                                                      Icon(entry.muc.icon, size: 16, color: Colors.white70),
-                                                      const Spacer(),
-                                                      Text(
-                                                        moneyText,
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 12,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      // Các khoản chi trong nhóm (theo giờ, số tiền)
+                                                      ...entries.map((entry) {
+                                                        final timeText = dinhDangGio(entry.item.thoiGian);
+                                                        final moneyText = '${dinhDangSo(entry.item.soTien)} đ';
+                                                        return Padding(
+                                                          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
+                                                          child: Row(
+                                                            children: [
+                                                              Text(
+                                                                timeText,
+                                                                style: const TextStyle(
+                                                                  color: Colors.white54,
+                                                                  fontSize: 12,
+                                                                ),
+                                                              ),
+                                                              const Spacer(),
+                                                              Text(
+                                                                moneyText,
+                                                                style: const TextStyle(
+                                                                  color: Colors.white,
+                                                                  fontSize: 12,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                      }),
                                                     ],
                                                   ),
                                                 );
-                                              },
-                                            ),
-                                            const SizedBox(height: 8),
+                                              }),
+                                              const SizedBox(height: 4),
+                                            ],
                                           ],
                                         ),
                                       );
