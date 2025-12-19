@@ -26,7 +26,6 @@ String dinhDangGio(DateTime time) {
   return '$h:$m';
 }
 
-// Hiển thị ngày tháng năm đầy đủ (dd/MM/yyyy)
 String dinhDangNgayDayDu(DateTime time) {
   final d = time.day.toString().padLeft(2, '0');
   final mo = time.month.toString().padLeft(2, '0');
@@ -110,7 +109,7 @@ class ChiTieuItem {
 
 // =================== CATEGORY ===================
 
-enum ChiTieuMuc { nhaTro, hocPhi, thucAn, doUong, xang, muaSam }
+enum ChiTieuMuc { nhaTro, hocPhi, thucAn, doUong, xang, muaSam, suaXe, lichSu }
 
 extension ChiTieuMucX on ChiTieuMuc {
   String get ten {
@@ -127,6 +126,10 @@ extension ChiTieuMucX on ChiTieuMuc {
         return 'Xăng';
       case ChiTieuMuc.muaSam:
         return 'Mua sắm';
+      case ChiTieuMuc.suaXe:
+        return 'Sửa xe';
+      case ChiTieuMuc.lichSu:
+        return 'Lịch sử';
     }
   }
 
@@ -144,6 +147,10 @@ extension ChiTieuMucX on ChiTieuMuc {
         return Icons.local_gas_station_rounded;
       case ChiTieuMuc.muaSam:
         return Icons.shopping_bag_rounded;
+      case ChiTieuMuc.suaXe:
+        return Icons.build_circle_rounded;
+      case ChiTieuMuc.lichSu:
+        return Icons.history_rounded;
     }
   }
 }
@@ -191,21 +198,36 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     int month = now.month;
     int year = now.year;
 
-    return _chiTheoMuc.values.fold<int>(
+    // Không tính mục Lịch sử vào tổng tiền
+    return _chiTheoMuc.entries.fold<int>(
       0,
-      (sum, list) =>
-          sum +
-          list.fold<int>(
-            0,
-            (a, b) =>
-                (b.thoiGian.month == month && b.thoiGian.year == year)
-                    ? a + b.soTien
-                    : a,
-          ),
+      (sum, entry) {
+        if (entry.key == ChiTieuMuc.lichSu) return sum;
+        return sum +
+            entry.value.fold<int>(
+              0,
+              (a, b) =>
+                  (b.thoiGian.month == month && b.thoiGian.year == year)
+                      ? a + b.soTien
+                      : a,
+            );
+      },
     );
   }
 
   Future<void> _moMuc(ChiTieuMuc muc) async {
+    // Nếu chọn Lịch sử, mở màn hình thống kê đặc biệt
+    if (muc == ChiTieuMuc.lichSu) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LichSuScreen(allData: _chiTheoMuc),
+        ),
+      );
+      return;
+    }
+
+    // Các mục bình thường
     final updated = await Navigator.push<List<ChiTieuItem>>(
       context,
       MaterialPageRoute(
@@ -239,7 +261,6 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                 const _WatchBackground(),
                 Column(
                   children: [
-                    // ✅ Màn hình chính: padding top 4
                     const SizedBox(height: 4),
                     const ClockText(showSeconds: false),
                     const SizedBox(height: 6),
@@ -282,7 +303,10 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                         itemCount: ChiTieuMuc.values.length,
                         itemBuilder: (context, i) {
                           final muc = ChiTieuMuc.values[i];
-                          final tongMuc = _tongMuc(muc);
+                          // Mục Lịch sử luôn = 0 để hiện icon to
+                          final tongMuc =
+                              (muc == ChiTieuMuc.lichSu) ? 0 : _tongMuc(muc);
+
                           return _CategoryButton(
                             icon: muc.icon,
                             tongTien: tongMuc,
@@ -475,6 +499,205 @@ class _CategoryButton extends StatelessWidget {
   }
 }
 
+// =================== LỊCH SỬ CHI TIÊU SCREEN (FIXED OVERFLOW) ===================
+
+class LichSuScreen extends StatelessWidget {
+  final Map<ChiTieuMuc, List<ChiTieuItem>> allData;
+
+  const LichSuScreen({super.key, required this.allData});
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, Map<ChiTieuMuc, int>> monthlyData = {};
+
+    allData.forEach((muc, items) {
+      if (muc == ChiTieuMuc.lichSu) return;
+      for (var item in items) {
+        final key = '${item.thoiGian.month}/${item.thoiGian.year}';
+        if (!monthlyData.containsKey(key)) {
+          monthlyData[key] = {};
+        }
+        monthlyData[key]![muc] = (monthlyData[key]![muc] ?? 0) + item.soTien;
+      }
+    });
+
+    final sortedMonths = monthlyData.keys.toList()
+      ..sort((a, b) {
+        final partsA = a.split('/');
+        final partsB = b.split('/');
+        final dateA = DateTime(int.parse(partsA[1]), int.parse(partsA[0]));
+        final dateB = DateTime(int.parse(partsB[1]), int.parse(partsB[0]));
+        return dateB.compareTo(dateA);
+      });
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final edge =
+                (constraints.maxWidth * 0.10).clamp(16.0, 36.0).toDouble();
+
+            return Stack(
+              children: [
+                const _WatchBackground(),
+                Positioned(
+                  top: 12,
+                  left: edge,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+                Column(
+                  children: [
+                    const SizedBox(height: 4),
+                    const ClockText(),
+                    const SizedBox(height: 8),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.history_rounded,
+                            color: Colors.white, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Lịch sử',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: sortedMonths.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'Chưa có dữ liệu',
+                                style: TextStyle(color: Colors.white38),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: EdgeInsets.fromLTRB(edge, 0, edge, 20),
+                              itemCount: sortedMonths.length,
+                              itemBuilder: (context, index) {
+                                final monthKey = sortedMonths[index];
+                                final categoryMap = monthlyData[monthKey]!;
+
+                                final totalMonth = categoryMap.values
+                                    .fold(0, (a, b) => a + b);
+
+                                final sortedCategories =
+                                    categoryMap.entries.toList()
+                                      ..sort(
+                                          (a, b) => b.value.compareTo(a.value));
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white10,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // HEADER FIX OVERFLOW
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white12,
+                                          borderRadius:
+                                              const BorderRadius.vertical(
+                                                  top: Radius.circular(16)),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              'Tháng $monthKey',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            // Fix: Dùng Flexible + FittedBox
+                                            Flexible(
+                                              child: FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Text(
+                                                  '${dinhDangSo(totalMonth)} đ',
+                                                  style: const TextStyle(
+                                                    color: Color(0xFFF08080),
+                                                    fontWeight:
+                                                        FontWeight.bold,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      // List Categories
+                                      ...sortedCategories.map((entry) {
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 8),
+                                          child: Row(
+                                            children: [
+                                              Icon(entry.key.icon,
+                                                  size: 16,
+                                                  color: Colors.white70),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  entry.key.ten,
+                                                  style: const TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                '${dinhDangSo(entry.value)} đ',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }).toList(),
+                                      const SizedBox(height: 4),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 // =================== CATEGORY DETAIL ===================
 
 class ChiTieuTheoMucScreen extends StatefulWidget {
@@ -654,7 +877,6 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                   ),
                   Column(
                     children: [
-                      // ✅ Màn hình chi tiết: Sửa padding top từ 10 thành 4 để khớp màn hình chính
                       const SizedBox(height: 4),
                       const ClockText(),
                       const SizedBox(height: 8),
@@ -713,12 +935,18 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    Text(
-                                      '${dinhDangSo(row.dailyTotal!)} đ',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
+                                    // Fix: Thêm Flexible + FittedBox ở đây luôn cho chắc chắn
+                                    Flexible(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          '${dinhDangSo(row.dailyTotal!)} đ',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
