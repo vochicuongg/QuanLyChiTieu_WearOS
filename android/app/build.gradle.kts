@@ -82,4 +82,15 @@ flutter {
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    
+    // Wear OS Tiles
+    implementation("androidx.wear.tiles:tiles:1.2.0")
+    implementation("androidx.wear.protolayout:protolayout:1.0.0")
+    implementation("androidx.wear.protolayout:protolayout-material:1.0.0")
+    implementation("androidx.wear.protolayout:protolayout-expression:1.0.0")
+    implementation("com.google.guava:guava:31.1-android")
+    
+    // Coroutines for async tile operations
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
 }

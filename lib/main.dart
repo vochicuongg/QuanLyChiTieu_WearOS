@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
+
 // Global SharedPreferences instance for faster access
 SharedPreferences? _prefs;
 
@@ -312,6 +313,21 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
+  // Get Vietnamese category name with diacritics for Tile
+  String _getCategoryNameVi(ChiTieuMuc muc) {
+    switch (muc) {
+      case ChiTieuMuc.nhaTro: return 'Nhà trọ';
+      case ChiTieuMuc.hocPhi: return 'Học phí';
+      case ChiTieuMuc.thucAn: return 'Thức ăn';
+      case ChiTieuMuc.doUong: return 'Đồ uống';
+      case ChiTieuMuc.xang: return 'Xăng';
+      case ChiTieuMuc.muaSam: return 'Mua sắm';
+      case ChiTieuMuc.suaXe: return 'Sửa xe';
+      case ChiTieuMuc.khac: return 'Khác';
+      default: return muc.name;
+    }
+  }
+
   void _invalidateCache() {
     _cachedTongHomNay = null;
     _cachedTongMuc.clear();
@@ -417,6 +433,32 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
       }
     }
     await prefs.setString(_keyLichSuThang, jsonEncode(lichSuThangData));
+    
+    // Collect all today's expenses for Tile
+    final List<Map<String, dynamic>> allExpenses = [];
+    int todayTotal = 0;
+    for (final muc in ChiTieuMuc.values) {
+      if (muc == ChiTieuMuc.lichSu || muc == ChiTieuMuc.caiDat) continue;
+      final items = _chiTheoMuc[muc] ?? <ChiTieuItem>[];
+      for (final item in items) {
+        todayTotal += item.soTien;
+        allExpenses.add({
+          'name': item.tenChiTieu ?? muc.ten,
+          'category': muc.name, // Category key for icon mapping
+          'categoryVi': _getCategoryNameVi(muc), // Vietnamese category name with diacritics
+          'amount': item.soTien,
+        });
+      }
+    }
+    
+    // Sort by amount descending and get top 2
+    allExpenses.sort((a, b) => (b['amount'] as int).compareTo(a['amount'] as int));
+    final top2 = allExpenses.take(2).toList();
+    
+    // Save tile data
+    await prefs.setInt('tile_today_total', todayTotal);
+    await prefs.setString('app_language', _appLanguage);
+    await prefs.setString('tile_top_expenses', jsonEncode(top2));
   }
 
   void _checkNewDay() {

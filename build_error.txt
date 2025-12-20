@@ -1,0 +1,47 @@
+﻿Running Gradle task 'assembleRelease'...                        
+Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 4452 bytes (99.7% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+flutter : e: file:///C:/Users/Cuong%20VO
+/Downloads/quan_ly_chi_tieu/android/app/
+src/main/kotlin/com/example/quan_ly_chi_
+tieu/VFinanceTileService.kt:238:89 
+Argument type mismatch: actual type is '
+DimensionBuilders.ExpandedDimensionProp'
+, but 
+'DimensionBuilders.SpacerDimension' was 
+expected.
+At line:1 char:1
++ flutter build apk --release 2>&1 | 
+Out-File build_error.txt -Encoding ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (e: file:///C:/U...' was expec  
+  ted.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task 
+':app:compileReleaseKotlin'.
+> A failure occurred while executing org
+.jetbrains.kotlin.compilerRunner.GradleC
+ompilerRunnerWithWorkers$GradleKotlinCom
+pilerWorkAction
+   > Compilation error. See log for 
+more details
+
+* Try:
+> Run with --stacktrace option to get 
+the stack trace.
+> Run with --info or --debug option to 
+get more log output.
+> Run with --scan to get full insights.
+> Get more help at 
+https://help.gradle.org.
+
+BUILD FAILED in 11s
+Running Gradle task 'assembleRelease'...                           11,8s
+Gradle task assembleRelease failed with 
+exit code 1

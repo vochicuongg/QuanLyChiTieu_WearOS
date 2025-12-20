@@ -42,6 +42,22 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- VFinance Tile Service -->
+        <service
+            android:name=".VFinanceTileService"
+            android:label="VFinance"
+            android:description="@string/tile_description"
+            android:icon="@mipmap/ic_launcher"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview" />
+        </service>
     </application>
 
     <!-- Cho phép Flutter query ACTION_PROCESS_TEXT -->
