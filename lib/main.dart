@@ -10,26 +10,29 @@ SharedPreferences? _prefs;
 // Cached regex for number formatting - avoid creating new RegExp on every call
 final RegExp _numberFormatRegex = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
 
-Future<void> main() async {
-  // Initialize bindings first for faster startup
+// Pre-built theme for faster startup - avoid creating new ThemeData each time
+final ThemeData _appTheme = ThemeData(
+  brightness: Brightness.dark,
+  scaffoldBackgroundColor: Colors.black,
+  pageTransitionsTheme: const PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+    },
+  ),
+);
+
+void main() {
+  // Show UI immediately - don't await anything!
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Pre-cache SharedPreferences
-  _prefs = await SharedPreferences.getInstance();
+  // Start SharedPreferences loading in background (non-blocking)
+  SharedPreferences.getInstance().then((prefs) => _prefs = prefs);
   
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'VFinance',
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.black,
-        pageTransitionsTheme: const PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-          },
-        ),
-      ),
+      theme: _appTheme,
       home: const ChiTieuApp(),
     ),
   );
@@ -179,7 +182,7 @@ extension ChiTieuMucX on ChiTieuMuc {
       case ChiTieuMuc.suaXe:
         return 'Sửa xe';
       case ChiTieuMuc.khac:
-        return 'Khác';
+        return 'Khoản chi khác';
       case ChiTieuMuc.lichSu:
         return 'Lịch sử';
       case ChiTieuMuc.caiDat:
@@ -204,7 +207,7 @@ extension ChiTieuMucX on ChiTieuMuc {
       case ChiTieuMuc.suaXe:
         return Icons.build_rounded;
       case ChiTieuMuc.khac:
-        return Icons.more_horiz_rounded;
+        return Icons.money_rounded;
       case ChiTieuMuc.lichSu:
         return Icons.history_rounded;
       case ChiTieuMuc.caiDat:
@@ -242,6 +245,8 @@ class ChiTieuApp extends StatefulWidget {
 
 class _ChiTieuAppState extends State<ChiTieuApp> {
   DateTime _currentDay = _asDate(DateTime.now());
+  final SmoothScrollController _scrollAnimController = SmoothScrollController();
+  bool _isLoading = true; // Track loading state for faster initial render
 
   final Map<ChiTieuMuc, List<ChiTieuItem>> _chiTheoMuc = {
     for (final muc in ChiTieuMuc.values) muc: <ChiTieuItem>[],
@@ -270,13 +275,17 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // Defer data loading to after first frame for faster initial render
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
     _dayCheckTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkNewDay());
   }
 
   @override
   void dispose() {
     _dayCheckTimer?.cancel();
+    _scrollAnimController.dispose();
     super.dispose();
   }
 
@@ -325,7 +334,9 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     
     _invalidateCache();
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -531,46 +542,87 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                 const _WatchBackground(),
                 Column(
                   children: [
-                    const SizedBox(height: 4),
-                    const ClockText(showSeconds: false),
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: edge),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          'Tổng chi tiêu ${_currentDay.day}/${_currentDay.month}:',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.2,
+                    // Animated header that collapses on scroll
+                    ListenableBuilder(
+                      listenable: _scrollAnimController,
+                      builder: (context, child) {
+                        final progress = _scrollAnimController.scrollProgress;
+                        // Interpolate values based on scroll progress
+                        final headerScale = 1.0 - (progress * 0.3);
+                        final headerOpacity = 1.0 - (progress * 0.6);
+                        final headerHeight = 4.0 + (1.0 - progress) * 2.0;
+                        final clockOpacity = 1.0 - (progress * 0.8);
+                        
+                        return ClipRect(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 50),
+                            child: Column(
+                              children: [
+                                SizedBox(height: headerHeight),
+                                Opacity(
+                                  opacity: clockOpacity.clamp(0.0, 1.0),
+                                  child: Transform.scale(
+                                    scale: headerScale,
+                                    child: const ClockText(showSeconds: false),
+                                  ),
+                                ),
+                                SizedBox(height: 6 * (1.0 - progress * 0.5)),
+                                Opacity(
+                                  opacity: headerOpacity.clamp(0.0, 1.0),
+                                  child: Transform.scale(
+                                    scale: headerScale,
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: edge),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'Tổng chi tiêu ${_currentDay.day}/${_currentDay.month}:',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.2,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: 4 * (1.0 - progress * 0.5)),
+                                Opacity(
+                                  opacity: headerOpacity.clamp(0.0, 1.0),
+                                  child: Transform.scale(
+                                    scale: headerScale,
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: edge),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          '${dinhDangSo(_tongHomNay)} đ',
+                                          style: const TextStyle(
+                                            color: Color(0xFFF08080),
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: 10 * (1.0 - progress * 0.3)),
+                              ],
+                            ),
                           ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 4),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: edge),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          '${dinhDangSo(_tongHomNay)} đ',
-                          style: const TextStyle(
-                            color: Color(0xFFF08080),
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
                     Expanded(
                       child: _ScalingGrid(
                         edge: edge,
                         itemCount: ChiTieuMuc.values.length,
+                        scrollController: _scrollAnimController,
                         itemBuilder: (context, i) {
                           final muc = ChiTieuMuc.values[i];
                           final tongMuc =
@@ -595,17 +647,31 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
   }
 }
 
+// =================== SMOOTH SCROLL CONTROLLER ===================
+
+class SmoothScrollController extends ChangeNotifier {
+  double _scrollProgress = 0.0;
+  double get scrollProgress => _scrollProgress;
+  
+  void updateProgress(double progress) {
+    _scrollProgress = progress.clamp(0.0, 1.0);
+    notifyListeners();
+  }
+}
+
 // =================== SCALING GRID ===================
 
 class _ScalingGrid extends StatefulWidget {
   final double edge;
   final int itemCount;
   final Widget Function(BuildContext, int) itemBuilder;
+  final SmoothScrollController? scrollController;
 
   const _ScalingGrid({
     required this.edge,
     required this.itemCount,
     required this.itemBuilder,
+    this.scrollController,
   });
 
   @override
@@ -619,9 +685,25 @@ class _ScalingGridState extends State<_ScalingGrid> {
   static const double _mainSpacing = 10;
   static const double _crossSpacing = 10;
   static const double _childAspectRatio = 1.3;
+  static const double _maxScrollThreshold = 60.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (widget.scrollController != null) {
+      final offset = _controller.offset;
+      final progress = (offset / _maxScrollThreshold).clamp(0.0, 1.0);
+      widget.scrollController!.updateProgress(progress);
+    }
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_onScroll);
     _controller.dispose();
     super.dispose();
   }
@@ -633,7 +715,9 @@ class _ScalingGridState extends State<_ScalingGrid> {
         return GridView.builder(
           controller: _controller,
           padding: EdgeInsets.fromLTRB(widget.edge, 0, widget.edge, widget.edge),
-          physics: const ClampingScrollPhysics(),
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: _crossAxisCount,
             mainAxisSpacing: _mainSpacing,
@@ -754,7 +838,7 @@ class _LichSuScreenState extends State<LichSuScreen> {
         currentDayEntries.add(HistoryEntry(muc: muc, item: it));
       }
     });
-    currentDayEntries.sort((a, b) => a.item.thoiGian.compareTo(b.item.thoiGian));
+    currentDayEntries.sort((a, b) => b.item.soTien.compareTo(a.item.soTien));
     if (currentDayEntries.isNotEmpty) {
       combined.putIfAbsent(monthKeyNow, () => {});
       combined[monthKeyNow]![dayKeyNow] = currentDayEntries;
@@ -939,7 +1023,7 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                               ...groupByCategory.entries.map((catEntry) {
                                                 final muc = catEntry.key;
                                                 final entries = List<HistoryEntry>.from(catEntry.value)
-                                                  ..sort((a, b) => a.item.thoiGian.compareTo(b.item.thoiGian));
+                                                  ..sort((a, b) => b.item.soTien.compareTo(a.item.soTien));
                                                 final totalCat = entries.fold(0, (s, e) => s + e.item.soTien);
 
                                                 return Padding(
@@ -1796,7 +1880,7 @@ class _KhacTheoMucScreenState extends State<KhacTheoMucScreen> {
       MaterialPageRoute(
         builder: (_) => XacNhanXoaKhacScreen(
           soTien: item.soTien,
-          tenChiTieu: item.tenChiTieu ?? 'Khác',
+          tenChiTieu: item.tenChiTieu ?? 'Khoản chi khác',
         ),
       ),
     );
@@ -1858,14 +1942,14 @@ class _KhacTheoMucScreenState extends State<KhacTheoMucScreen> {
                     children: [
                       const SizedBox(height: 4),
                       const ClockText(),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 24),
                       const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.more_horiz_rounded, color: Colors.white, size: 18),
+                          Icon(Icons.money_rounded, color: Colors.white, size: 18),
                           SizedBox(width: 6),
                           Text(
-                            'Khác',
+                            'Khoản chi khác',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -1898,7 +1982,7 @@ class _KhacTheoMucScreenState extends State<KhacTheoMucScreen> {
                             final item = danhSachChi[index];
                             final timeText = dinhDangGio(item.thoiGian);
                             final moneyText = '${dinhDangSo(item.soTien)} đ';
-                            final tenChiTieu = item.tenChiTieu ?? 'Khác';
+                            final tenChiTieu = item.tenChiTieu ?? 'Khoản chi khác';
 
                             return GestureDetector(
                               onTap: () {
