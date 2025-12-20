@@ -8,6 +8,10 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 // Global SharedPreferences instance for faster access
 SharedPreferences? _prefs;
 
+// Global language setting - 'vi' for Vietnamese, 'en' for English
+String _appLanguage = 'vi';
+const String _keyLanguage = 'app_language';
+
 // Cached regex for number formatting - avoid creating new RegExp on every call
 final RegExp _numberFormatRegex = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
 
@@ -55,11 +59,49 @@ String dinhDangGio(DateTime time) {
   return '$h:$m';
 }
 
+// Internal date key format - ALWAYS DD/MM/YYYY for consistent storage
 String dinhDangNgayDayDu(DateTime time) {
   final d = time.day.toString().padLeft(2, '0');
   final mo = time.month.toString().padLeft(2, '0');
   final y = time.year.toString();
   return '$d/$mo/$y';
+}
+
+// Display date format - localized for UI display only
+String dinhDangNgayHienThi(DateTime time) {
+  final d = time.day.toString().padLeft(2, '0');
+  final mo = time.month.toString().padLeft(2, '0');
+  final y = time.year.toString();
+  if (_appLanguage == 'en') {
+    return '$mo/$d/$y';
+  }
+  return '$d/$mo/$y';
+}
+
+// Get ordinal suffix for English (1st, 2nd, 3rd, 4th, etc.)
+String getOrdinalSuffix(int day) {
+  if (day >= 11 && day <= 13) return '${day}th';
+  switch (day % 10) {
+    case 1: return '${day}st';
+    case 2: return '${day}nd';
+    case 3: return '${day}rd';
+    default: return '${day}th';
+  }
+}
+
+// Get month name for English
+String getMonthName(int month) {
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return months[month - 1];
+}
+
+// Get short month name for English
+String getShortMonthName(int month) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return months[month - 1];
 }
 
 String getMonthKey(DateTime date) => '${date.month}/${date.year}';
@@ -168,27 +210,28 @@ enum ChiTieuMuc { nhaTro, hocPhi, thucAn, doUong, xang, muaSam, suaXe, khac, lic
 
 extension ChiTieuMucX on ChiTieuMuc {
   String get ten {
+    final isVi = _appLanguage == 'vi';
     switch (this) {
       case ChiTieuMuc.nhaTro:
-        return 'Nhà trọ';
+        return isVi ? 'Nhà trọ' : 'Rent';
       case ChiTieuMuc.hocPhi:
-        return 'Học phí';
+        return isVi ? 'Học phí' : 'Tuition';
       case ChiTieuMuc.thucAn:
-        return 'Thức ăn';
+        return isVi ? 'Thức ăn' : 'Food';
       case ChiTieuMuc.doUong:
-        return 'Đồ uống';
+        return isVi ? 'Đồ uống' : 'Drinks';
       case ChiTieuMuc.xang:
-        return 'Xăng';
+        return isVi ? 'Xăng' : 'Gas';
       case ChiTieuMuc.muaSam:
-        return 'Mua sắm';
+        return isVi ? 'Mua sắm' : 'Shopping';
       case ChiTieuMuc.suaXe:
-        return 'Sửa xe';
+        return isVi ? 'Sửa xe' : 'Repair';
       case ChiTieuMuc.khac:
-        return 'Khoản chi khác';
+        return isVi ? 'Khoản chi khác' : 'Other';
       case ChiTieuMuc.lichSu:
-        return 'Lịch sử';
+        return isVi ? 'Lịch sử' : 'History';
       case ChiTieuMuc.caiDat:
-        return 'Cài đặt';
+        return isVi ? 'Cài đặt' : 'Settings';
     }
   }
 
@@ -294,6 +337,12 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
   // Load data from SharedPreferences (uses pre-cached instance)
   Future<void> _loadData() async {
     final prefs = _prefs ?? await SharedPreferences.getInstance();
+    
+    // Load language preference first
+    final savedLanguage = prefs.getString(_keyLanguage);
+    if (savedLanguage != null) {
+      _appLanguage = savedLanguage;
+    }
     
     // Load _chiTheoMuc
     final chiTheoMucJson = prefs.getString(_keyChiTheoMuc);
@@ -482,7 +531,12 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => const SettingsScreen(),
+          builder: (_) => SettingsScreen(
+            onLanguageChanged: () {
+              // Rebuild main app when language changes
+              if (mounted) setState(() {});
+            },
+          ),
         ),
       );
       return;
@@ -573,7 +627,9 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         child: Text(
-                                          'Tổng chi tiêu ${_currentDay.day}/${_currentDay.month}:',
+                                          _appLanguage == 'vi'
+                                              ? 'Tổng chi tiêu ${_currentDay.day}/${_currentDay.month}:'
+                                              : 'Spending ${getShortMonthName(_currentDay.month)} ${getOrdinalSuffix(_currentDay.day)}:',
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 14,
@@ -873,13 +929,13 @@ class _LichSuScreenState extends State<LichSuScreen> {
                 const SizedBox(height: 4),
                 const ClockText(),
                 const SizedBox(height: 8),
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.history_rounded, color: Colors.white, size: 18),
                     SizedBox(width: 6),
                     Text(
-                      'Lịch sử',
+                      _appLanguage == 'vi' ? 'Lịch sử' : 'History',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -891,9 +947,9 @@ class _LichSuScreenState extends State<LichSuScreen> {
                 const SizedBox(height: 12),
                 Expanded(
                   child: sortedMonths.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Text(
-                            'Chưa có dữ liệu',
+                            _appLanguage == 'vi' ? 'Chưa có dữ liệu' : 'No data',
                             style: TextStyle(color: Colors.white38),
                           ),
                         )
@@ -936,7 +992,15 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          'Tháng $monthKey',
+                                          () {
+                                            final parts = monthKey.split('/');
+                                            final month = int.parse(parts[0]);
+                                            final year = parts[1];
+                                            if (_appLanguage == 'en') {
+                                              return '${getMonthName(month)} $year';
+                                            }
+                                            return 'Tháng $monthKey';
+                                          }(),
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontWeight: FontWeight.bold,
@@ -997,7 +1061,13 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                   children: [
                                                     Text(
-                                                      'Ngày ${dayKey.split('/')[0]}',
+                                                      () {
+                                                        final day = int.parse(dayKey.split('/')[0]);
+                                                        if (_appLanguage == 'en') {
+                                                          return getOrdinalSuffix(day);
+                                                        }
+                                                        return 'Ngày $day';
+                                                      }(),
                                                       style: const TextStyle(
                                                         color: Colors.white70,
                                                         fontSize: 12,
@@ -1571,8 +1641,8 @@ class XacNhanXoaScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
-                      'Bạn có muốn xóa khoản chi',
+                    Text(
+                      _appLanguage == 'vi' ? 'Bạn có muốn xóa khoản chi' : 'Delete expense',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -1592,8 +1662,8 @@ class XacNhanXoaScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 0),
-                    const Text(
-                      'này không?',
+                    Text(
+                      _appLanguage == 'vi' ? 'này không?' : '',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -1715,7 +1785,9 @@ class _NhapSoTienScreenState extends State<NhapSoTienScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    isEdit ? 'Sửa số tiền' : 'Nhập số tiền',
+                    isEdit 
+                        ? (_appLanguage == 'vi' ? 'Sửa số tiền' : 'Edit amount')
+                        : (_appLanguage == 'vi' ? 'Nhập số tiền' : 'Enter amount'),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -1940,13 +2012,13 @@ class _KhacTheoMucScreenState extends State<KhacTheoMucScreen> {
                       const SizedBox(height: 4),
                       const ClockText(),
                       const SizedBox(height: 24),
-                      const Row(
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.money_rounded, color: Colors.white, size: 18),
                           SizedBox(width: 6),
                           Text(
-                            'Khoản chi khác',
+                            _appLanguage == 'vi' ? 'Khoản chi khác' : 'Other expenses',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -2156,8 +2228,8 @@ class XacNhanXoaKhacScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
-                      'Xóa khoản chi',
+                    Text(
+                      _appLanguage == 'vi' ? 'Xóa khoản chi' : 'Delete expense',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -2311,7 +2383,9 @@ class _NhapChiTieuKhacScreenState extends State<NhapChiTieuKhacScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      isEdit ? 'Sửa chi tiêu' : 'Thêm chi tiêu khác',
+                      isEdit 
+                          ? (_appLanguage == 'vi' ? 'Sửa chi tiêu' : 'Edit expense')
+                          : (_appLanguage == 'vi' ? 'Thêm chi tiêu khác' : 'Add expense'),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -2331,8 +2405,8 @@ class _NhapChiTieuKhacScreenState extends State<NhapChiTieuKhacScreen> {
                           fontSize: 16
                         ),
                         textAlign: TextAlign.center,
-                        decoration: const InputDecoration(
-                          hintText: 'Tên chi tiêu',
+                        decoration: InputDecoration(
+                          hintText: _appLanguage == 'vi' ? 'Tên chi tiêu' : 'Expense name',
                           hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
                           enabledBorder: UnderlineInputBorder(
                             borderSide: BorderSide(color: Colors.white24),
@@ -2358,8 +2432,8 @@ class _NhapChiTieuKhacScreenState extends State<NhapChiTieuKhacScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                         textAlign: TextAlign.center,
-                        decoration: const InputDecoration(
-                          hintText: 'Số tiền',
+                        decoration: InputDecoration(
+                          hintText: _appLanguage == 'vi' ? 'Số tiền' : 'Amount',
                           hintStyle: TextStyle(color: Colors.white24, fontSize: 18),
                           enabledBorder: UnderlineInputBorder(
                             borderSide: BorderSide(color: Colors.white24),
@@ -2407,12 +2481,46 @@ class _NhapChiTieuKhacScreenState extends State<NhapChiTieuKhacScreen> {
 
 // =================== SETTINGS SCREEN ===================
 
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+class SettingsScreen extends StatefulWidget {
+  final VoidCallback? onLanguageChanged;
+  
+  const SettingsScreen({super.key, this.onLanguageChanged});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late String _selectedLanguage;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLanguage = _appLanguage; // Load from global state
+  }
+
+  Future<void> _setLanguage(String lang) async {
+    if (_selectedLanguage == lang) return;
+    
+    setState(() {
+      _selectedLanguage = lang;
+    });
+    
+    // Update global language
+    _appLanguage = lang;
+    
+    // Save to SharedPreferences
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    await prefs.setString(_keyLanguage, lang);
+    
+    // Notify parent to rebuild
+    widget.onLanguageChanged?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
     final edge = (MediaQuery.of(context).size.width * 0.10).clamp(16.0, 36.0);
+    final isVietnamese = _selectedLanguage == 'vi';
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -2420,67 +2528,191 @@ class SettingsScreen extends StatelessWidget {
         child: Stack(
           children: [
             const _WatchBackground(),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+            Padding(
+              padding: const EdgeInsets.only(top: 32, bottom: 8),
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.settings_rounded, color: Colors.white, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        isVietnamese ? 'Cài đặt' : 'Settings',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Language Section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.settings_rounded, color: Colors.white, size: 18),
-                        SizedBox(width: 6),
-                        Text(
-                          'Cài đặt',
-                          style: TextStyle(
+                        Row(
+                          children: [
+                            const Icon(Icons.language_rounded, color: Colors.white70, size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                              isVietnamese ? 'Ngôn ngữ' : 'Language',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            // Vietnamese option
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => _setLanguage('vi'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: _selectedLanguage == 'vi' 
+                                        ? const Color(0xFF4CAF93).withOpacity(0.3) 
+                                        : Colors.white10,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: _selectedLanguage == 'vi'
+                                        ? Border.all(color: const Color(0xFF4CAF93), width: 1.5)
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      const Text('🇻🇳', style: TextStyle(fontSize: 18)),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Tiếng Việt',
+                                        style: TextStyle(
+                                          color: _selectedLanguage == 'vi' 
+                                              ? const Color(0xFF4CAF93) 
+                                              : Colors.white70,
+                                          fontSize: 10,
+                                          fontWeight: _selectedLanguage == 'vi' 
+                                              ? FontWeight.w600 
+                                              : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // English option
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => _setLanguage('en'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: _selectedLanguage == 'en' 
+                                        ? const Color(0xFF4CAF93).withOpacity(0.3) 
+                                        : Colors.white10,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: _selectedLanguage == 'en'
+                                        ? Border.all(color: const Color(0xFF4CAF93), width: 1.5)
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      const Text('🇺🇸', style: TextStyle(fontSize: 18)),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'English',
+                                        style: TextStyle(
+                                          color: _selectedLanguage == 'en' 
+                                              ? const Color(0xFF4CAF93) 
+                                              : Colors.white70,
+                                          fontSize: 10,
+                                          fontWeight: _selectedLanguage == 'en' 
+                                              ? FontWeight.w600 
+                                              : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // QR Code Section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.qr_code_rounded, color: Colors.white70, size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                              isVietnamese ? 'Liên hệ tôi' : 'Contact Me',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
                             color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.asset(
+                              'assets/images/qr_code.png',
+                              width: 80,
+                              height: 80,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'vochicuong.id.vn',
+                          style: TextStyle(
+                            color: Color(0xFF4CAF93),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          'assets/images/qr_code.png',
-                          width: 90,
-                          height: 90,
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(
-                        'Liên hệ tôi',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'vochicuong.id.vn',
-                      style: TextStyle(
-                        color: Color(0xFF4CAF93),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
             // Back button on top of everything
