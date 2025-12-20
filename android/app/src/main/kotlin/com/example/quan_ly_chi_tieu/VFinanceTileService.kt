@@ -143,16 +143,16 @@ class VFinanceTileService : TileService() {
             .build()
 
         val columnBuilder = LayoutElementBuilders.Column.Builder()
-            .setWidth(dp(180f))
-            .setHeight(dp(180f))
+            .setWidth(dp(210f))
+            .setHeight(dp(210f))
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
             .setModifiers(
                 ModifiersBuilders.Modifiers.Builder()
                     .setPadding(
                         ModifiersBuilders.Padding.Builder()
-                            .setTop(dp(20f))
-                            .setStart(dp(10f))
-                            .setEnd(dp(10f))
+                            .setTop(dp(28f))
+                            .setStart(dp(12f))
+                            .setEnd(dp(12f))
                             .build()
                     )
                     .build()
@@ -162,32 +162,32 @@ class VFinanceTileService : TileService() {
                     .setText("VFinance")
                     .setFontStyle(
                         LayoutElementBuilders.FontStyle.Builder()
-                            .setSize(sp(13f))
+                            .setSize(sp(16f))
                             .setColor(argb(0xFF4CAF93.toInt()))
                             .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
                             .build()
                     )
                     .build()
             )
-            .addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(1f)).build())
+            .addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(2f)).build())
             .addContent(
                 LayoutElementBuilders.Text.Builder()
                     .setText(title)
                     .setFontStyle(
                         LayoutElementBuilders.FontStyle.Builder()
-                            .setSize(sp(9f))
+                            .setSize(sp(11f))
                             .setColor(argb(0xB3FFFFFF.toInt()))
                             .build()
                     )
                     .build()
             )
-            .addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(1f)).build())
+            .addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(2f)).build())
             .addContent(
                 LayoutElementBuilders.Text.Builder()
                     .setText(amount + " đ")
                     .setFontStyle(
                         LayoutElementBuilders.FontStyle.Builder()
-                            .setSize(sp(18f))
+                            .setSize(sp(24f))
                             .setColor(argb(0xFFF08080.toInt()))
                             .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
                             .build()
@@ -197,12 +197,12 @@ class VFinanceTileService : TileService() {
 
         // Add top expenses in separate boxes
         if (exp1Name.isNotEmpty() || exp2Name.isNotEmpty()) {
-            columnBuilder.addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(6f)).build())
+            columnBuilder.addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(10f)).build())
             
             // Row for expense boxes
             val rowBuilder = LayoutElementBuilders.Row.Builder()
-                .setWidth(dp(160f))
-                .setHeight(dp(50f))
+                .setWidth(dp(190f))
+                .setHeight(dp(60f))
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
             
             // First expense box
@@ -212,7 +212,7 @@ class VFinanceTileService : TileService() {
             
             // Spacer between boxes
             if (exp1Name.isNotEmpty() && exp2Name.isNotEmpty()) {
-                rowBuilder.addContent(LayoutElementBuilders.Spacer.Builder().setWidth(dp(6f)).build())
+                rowBuilder.addContent(LayoutElementBuilders.Spacer.Builder().setWidth(dp(8f)).build())
             }
             
             // Second expense box
@@ -224,8 +224,10 @@ class VFinanceTileService : TileService() {
         }
 
         return LayoutElementBuilders.Box.Builder()
-            .setWidth(dp(180f))
-            .setHeight(dp(180f))
+            .setWidth(dp(210f))
+            .setHeight(dp(210f))
+            .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
+            .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
             .setModifiers(modifiers)
             .addContent(columnBuilder.build())
             .build()
@@ -233,8 +235,8 @@ class VFinanceTileService : TileService() {
     
     private fun createExpenseBox(name: String, amount: String): LayoutElementBuilders.LayoutElement {
         return LayoutElementBuilders.Box.Builder()
-            .setWidth(dp(75f))
-            .setHeight(dp(48f))
+            .setWidth(dp(90f))
+            .setHeight(dp(56f))
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
             .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
             .setModifiers(
@@ -244,42 +246,51 @@ class VFinanceTileService : TileService() {
                             .setColor(argb(0xFF2A2A2A.toInt()))
                             .setCorner(
                                 ModifiersBuilders.Corner.Builder()
-                                    .setRadius(dp(12f))
+                                    .setRadius(dp(14f))
                                     .build()
                             )
                             .build()
                     )
                     .setPadding(
                         ModifiersBuilders.Padding.Builder()
-                            .setAll(dp(4f))
+                            .setAll(dp(6f))
                             .build()
                     )
                     .build()
             )
             .addContent(
                 LayoutElementBuilders.Column.Builder()
-                    .setWidth(dp(70f))
-                    .setHeight(dp(44f))
+                    .setWidth(dp(84f))
+                    .setHeight(dp(48f))
                     .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
+                    .setModifiers(
+                        ModifiersBuilders.Modifiers.Builder()
+                            .setPadding(
+                                ModifiersBuilders.Padding.Builder()
+                                    .setTop(dp(4f))
+                                    .build()
+                            )
+                            .build()
+                    )
                     .addContent(
                         LayoutElementBuilders.Text.Builder()
                             .setText(name)
                             .setFontStyle(
                                 LayoutElementBuilders.FontStyle.Builder()
-                                    .setSize(sp(10f))
+                                    .setSize(sp(12f))
                                     .setColor(argb(0xFFFFFFFF.toInt()))
                                     .build()
                             )
                             .setMaxLines(1)
                             .build()
                     )
-                    .addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(2f)).build())
+                    .addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(3f)).build())
                     .addContent(
                         LayoutElementBuilders.Text.Builder()
                             .setText(amount + "đ")
                             .setFontStyle(
                                 LayoutElementBuilders.FontStyle.Builder()
-                                    .setSize(sp(11f))
+                                    .setSize(sp(13f))
                                     .setColor(argb(0xFFF08080.toInt()))
                                     .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
                                     .build()
