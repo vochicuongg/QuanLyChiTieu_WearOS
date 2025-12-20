@@ -1988,33 +1988,30 @@ class _KhacTheoMucScreenState extends State<KhacTheoMucScreen> {
               return Stack(
                 children: [
                   const _WatchBackground(),
-                  Positioned(
-                    top: 12,
-                    left: edge,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white70,
-                        size: 16,
-                      ),
-                      onPressed: () {
-                        if (dangChonXoa) {
-                          huyChonXoa();
-                        } else {
-                          widget.onDataChanged?.call(danhSachChi);
-                          Navigator.pop(context, danhSachChi);
-                        }
-                      },
-                    ),
-                  ),
                   Column(
                     children: [
                       const SizedBox(height: 4),
                       const ClockText(),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          GestureDetector(
+                            onTap: () {
+                              if (dangChonXoa) {
+                                huyChonXoa();
+                              } else {
+                                widget.onDataChanged?.call(danhSachChi);
+                                Navigator.pop(context, danhSachChi);
+                              }
+                            },
+                            child: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white70,
+                              size: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
                           Icon(Icons.money_rounded, color: Colors.white, size: 18),
                           SizedBox(width: 6),
                           Text(
