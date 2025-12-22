@@ -64,7 +64,7 @@ String dinhDangGio(DateTime time) {
 String dinhDangNgayDayDu(DateTime time) {
   final d = time.day.toString().padLeft(2, '0');
   final mo = time.month.toString().padLeft(2, '0');
-  final y = time.year.toString();
+  final y = time.year.toString().padLeft(2, '0');
   return '$d/$mo/$y';
 }
 
@@ -72,7 +72,7 @@ String dinhDangNgayDayDu(DateTime time) {
 String dinhDangNgayHienThi(DateTime time) {
   final d = time.day.toString().padLeft(2, '0');
   final mo = time.month.toString().padLeft(2, '0');
-  final y = time.year.toString();
+  final y = time.year.toString().padLeft(2, '0');
   if (_appLanguage == 'en') {
     return '$mo/$d/$y';
   }
@@ -460,7 +460,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     final top2 = categoryList.take(2).toList();
     
     // Save tile data
-    await prefs.setInt('tile_today_total', todayTotal);
+    await prefs.setString('tile_today_total', todayTotal.toString());
     await prefs.setString('app_language', _appLanguage);
     await prefs.setString('tile_top_expenses', jsonEncode(top2));
   }
@@ -1088,6 +1088,9 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                         groupByCategory[entry.muc]!.add(entry);
                                       }
 
+                                      // Calculate daily total
+                                      final dayTotal = itemsOnDay.fold(0, (sum, e) => sum + e.item.soTien);
+
                                       return Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                         child: Column(
@@ -1107,7 +1110,6 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                               child: Padding(
                                                 padding: const EdgeInsets.symmetric(vertical: 6),
                                                 child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                   children: [
                                                     Text(
                                                       () {
@@ -1123,6 +1125,22 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                         fontWeight: FontWeight.w600,
                                                       ),
                                                     ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: FittedBox(
+                                                        fit: BoxFit.scaleDown,
+                                                        alignment: Alignment.centerRight,
+                                                        child: Text(
+                                                          '${dinhDangSo(dayTotal)} đ',
+                                                          style: const TextStyle(
+                                                            color: Color(0xFFF08080),
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 4),
                                                     Icon(
                                                       expanded
                                                           ? Icons.keyboard_arrow_up_rounded
@@ -1152,15 +1170,17 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                           Icon(muc.icon, size: 16, color: Colors.white70),
                                                           const SizedBox(width: 6),
                                                           Expanded(
-                                                            child: Text(
-                                                              '${dinhDangSo(totalCat)} đ',
-                                                              style: const TextStyle(
-                                                                color: Colors.white,
-                                                                fontSize: 12,
-                                                                fontWeight: FontWeight.w600,
+                                                            child: FittedBox(
+                                                              fit: BoxFit.scaleDown,
+                                                              alignment: Alignment.centerLeft,
+                                                              child: Text(
+                                                                '${dinhDangSo(totalCat)} đ',
+                                                                style: const TextStyle(
+                                                                  color: Colors.white,
+                                                                  fontSize: 12,
+                                                                  fontWeight: FontWeight.w600,
+                                                                ),
                                                               ),
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
                                                             ),
                                                           ),
                                                         ],
@@ -1199,15 +1219,16 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                                         ),
                                                                         const SizedBox(width: 8),
                                                                         Expanded(
-                                                                          child: Text(
-                                                                            moneyText,
-                                                                            textAlign: TextAlign.end,
-                                                                            style: const TextStyle(
-                                                                              color: Colors.white,
-                                                                              fontSize: 12,
+                                                                          child: FittedBox(
+                                                                            fit: BoxFit.scaleDown,
+                                                                            alignment: Alignment.centerRight,
+                                                                            child: Text(
+                                                                              moneyText,
+                                                                              style: const TextStyle(
+                                                                                color: Colors.white,
+                                                                                fontSize: 12,
+                                                                              ),
                                                                             ),
-                                                                            maxLines: 1,
-                                                                            overflow: TextOverflow.ellipsis,
                                                                           ),
                                                                         ),
                                                                       ],
@@ -1225,15 +1246,16 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                                     ),
                                                                     const SizedBox(width: 8),
                                                                     Expanded(
-                                                                      child: Text(
-                                                                        moneyText,
-                                                                        textAlign: TextAlign.end,
-                                                                        style: const TextStyle(
-                                                                          color: Colors.white,
-                                                                          fontSize: 12,
+                                                                      child: FittedBox(
+                                                                        fit: BoxFit.scaleDown,
+                                                                        alignment: Alignment.centerRight,
+                                                                        child: Text(
+                                                                          moneyText,
+                                                                          style: const TextStyle(
+                                                                            color: Colors.white,
+                                                                            fontSize: 12,
+                                                                          ),
                                                                         ),
-                                                                        maxLines: 1,
-                                                                        overflow: TextOverflow.ellipsis,
                                                                       ),
                                                                     ),
                                                                   ],
@@ -1507,8 +1529,6 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     vertical: 8, horizontal: 2),
                                 child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       row.dateHeader!,
@@ -1518,9 +1538,11 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    Flexible(
+                                    const SizedBox(width: 8),
+                                    Expanded(
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerRight,
                                         child: Text(
                                           '${dinhDangSo(row.dailyTotal!)} đ',
                                           style: const TextStyle(
@@ -2172,8 +2194,6 @@ class _KhacTheoMucScreenState extends State<KhacTheoMucScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
                                           timeText,
@@ -2182,12 +2202,19 @@ class _KhacTheoMucScreenState extends State<KhacTheoMucScreen> {
                                             fontSize: 10,
                                           ),
                                         ),
-                                        Text(
-                                          moneyText,
-                                          style: const TextStyle(
-                                            color: Color(0xFFF08080),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerRight,
+                                            child: Text(
+                                              moneyText,
+                                              style: const TextStyle(
+                                                color: Color(0xFFF08080),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -2793,4 +2820,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-}
+} 

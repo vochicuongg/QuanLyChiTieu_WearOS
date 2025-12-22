@@ -1,3 +1,4 @@
 {
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "cmake.sourceDirectory": "C:/Users/Cuong VO/Downloads/quan_ly_chi_tieu/linux"
 }
