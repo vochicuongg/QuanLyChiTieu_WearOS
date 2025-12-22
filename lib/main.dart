@@ -93,8 +93,8 @@ String getOrdinalSuffix(int day) {
 // Get month name for English
 String getMonthName(int month) {
   const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
   ];
   return months[month - 1];
 }
@@ -1046,7 +1046,7 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                             if (_appLanguage == 'en') {
                                               return '${getMonthName(month)} $year';
                                             }
-                                            return 'Tháng $monthKey';
+                                            return 'Th.$monthKey';
                                           }(),
                                           style: const TextStyle(
                                             color: Colors.white,
@@ -1056,7 +1056,7 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                         ),
                                       ),
                                         Flexible(
-                                          flex: 1,
+                                          
                                           child: FittedBox(
                                             fit: BoxFit.scaleDown,
                                             child: Text(
@@ -1087,6 +1087,7 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                         groupByCategory.putIfAbsent(entry.muc, () => []);
                                         groupByCategory[entry.muc]!.add(entry);
                                       }
+
                                       return Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                         child: Column(
@@ -1146,16 +1147,20 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                   child: Column(
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      Row(                                                                                     
+                                                      Row(
                                                         children: [
                                                           Icon(muc.icon, size: 16, color: Colors.white70),
                                                           const SizedBox(width: 6),
-                                                          Text(
-                                                            '${dinhDangSo(totalCat)} đ',
-                                                            style: const TextStyle(
-                                                              color: Colors.white,
-                                                              fontSize: 12,
-                                                              fontWeight: FontWeight.w600,
+                                                          Expanded(
+                                                            child: Text(
+                                                              '${dinhDangSo(totalCat)} đ',
+                                                              style: const TextStyle(
+                                                                color: Colors.white,
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.w600,
+                                                              ),
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
                                                             ),
                                                           ),
                                                         ],
@@ -1192,12 +1197,17 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                                             fontSize: 10,
                                                                           ),
                                                                         ),
-                                                                        const Spacer(),
-                                                                        Text(
-                                                                          moneyText,
-                                                                          style: const TextStyle(
-                                                                            color: Colors.white,
-                                                                            fontSize: 12,
+                                                                        const SizedBox(width: 8),
+                                                                        Expanded(
+                                                                          child: Text(
+                                                                            moneyText,
+                                                                            textAlign: TextAlign.end,
+                                                                            style: const TextStyle(
+                                                                              color: Colors.white,
+                                                                              fontSize: 12,
+                                                                            ),
+                                                                            maxLines: 1,
+                                                                            overflow: TextOverflow.ellipsis,
                                                                           ),
                                                                         ),
                                                                       ],
@@ -1213,12 +1223,17 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                                         fontSize: 12,
                                                                       ),
                                                                     ),
-                                                                    const Spacer(),
-                                                                    Text(
-                                                                      moneyText,
-                                                                      style: const TextStyle(
-                                                                        color: Colors.white,
-                                                                        fontSize: 12,
+                                                                    const SizedBox(width: 8),
+                                                                    Expanded(
+                                                                      child: Text(
+                                                                        moneyText,
+                                                                        textAlign: TextAlign.end,
+                                                                        style: const TextStyle(
+                                                                          color: Colors.white,
+                                                                          fontSize: 12,
+                                                                        ),
+                                                                        maxLines: 1,
+                                                                        overflow: TextOverflow.ellipsis,
                                                                       ),
                                                                     ),
                                                                   ],
