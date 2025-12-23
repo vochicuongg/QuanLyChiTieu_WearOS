@@ -26,21 +26,34 @@ class VFinanceTileService : TileService() {
     override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> {
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         
-        val todayTotal = try {
-            // Read as String (most reliable cross-platform format)
-            val totalStr = prefs.getString("flutter.tile_today_total", "0") ?: "0"
-            totalStr.toLongOrNull() ?: 0L
-        } catch (e: Exception) {
-            // Fallback for old Float/Double values
-            try { 
-                prefs.getFloat("flutter.tile_today_total", 0f).toLong()
-            } catch (e2: Exception) {
-                try { prefs.getLong("flutter.tile_today_total", 0L) } catch (e3: Exception) { 0L }
+        // Check if saved data is from today
+        val savedDate = prefs.getString("flutter.tile_data_date", "") ?: ""
+        val todayDate = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+        val isDataFromToday = savedDate == todayDate
+        
+        val todayTotal = if (isDataFromToday) {
+            try {
+                // Read as String (most reliable cross-platform format)
+                val totalStr = prefs.getString("flutter.tile_today_total", "0") ?: "0"
+                totalStr.toLongOrNull() ?: 0L
+            } catch (e: Exception) {
+                // Fallback for old Float/Double values
+                try { 
+                    prefs.getFloat("flutter.tile_today_total", 0f).toLong()
+                } catch (e2: Exception) {
+                    try { prefs.getLong("flutter.tile_today_total", 0L) } catch (e3: Exception) { 0L }
+                }
             }
+        } else {
+            0L // Reset to 0 if data is not from today
         }
         
         val language = prefs.getString("flutter.app_language", "vi") ?: "vi"
-        val topExpensesJson = prefs.getString("flutter.tile_top_expenses", "[]") ?: "[]"
+        val topExpensesJson = if (isDataFromToday) {
+            prefs.getString("flutter.tile_top_expenses", "[]") ?: "[]"
+        } else {
+            "[]" // Reset to empty if data is not from today
+        }
         
         // Parse top 2 expenses  
         var expense1Name = ""

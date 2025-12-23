@@ -434,7 +434,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     }
     await prefs.setString(_keyLichSuThang, jsonEncode(lichSuThangData));
     
-    // Collect expenses aggregated by category for Tile
+    // Collect expenses aggregated by category for Tile (filter by current day)
     final Map<ChiTieuMuc, int> categoryTotals = {};
     int todayTotal = 0;
     for (final muc in ChiTieuMuc.values) {
@@ -442,8 +442,11 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
       final items = _chiTheoMuc[muc] ?? <ChiTieuItem>[];
       int categorySum = 0;
       for (final item in items) {
-        todayTotal += item.soTien;
-        categorySum += item.soTien;
+        // Only include expenses from the current day
+        if (_sameDay(item.thoiGian, _currentDay)) {
+          todayTotal += item.soTien;
+          categorySum += item.soTien;
+        }
       }
       if (categorySum > 0) {
         categoryTotals[muc] = categorySum;
@@ -459,8 +462,9 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     categoryList.sort((a, b) => (b['amount'] as int).compareTo(a['amount'] as int));
     final top2 = categoryList.take(2).toList();
     
-    // Save tile data
+    // Save tile data with current date for day validation
     await prefs.setString('tile_today_total', todayTotal.toString());
+    await prefs.setString('tile_data_date', dinhDangNgayDayDu(_currentDay));
     await prefs.setString('app_language', _appLanguage);
     await prefs.setString('tile_top_expenses', jsonEncode(top2));
     
@@ -544,7 +548,8 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
       return _cachedTongMuc[muc]!;
     }
     final list = _chiTheoMuc[muc] ?? <ChiTieuItem>[];
-    final total = list.fold(0, (a, b) => a + b.soTien);
+    // Filter by current day to ensure category totals reset correctly  
+    final total = list.fold(0, (a, b) => _sameDay(b.thoiGian, _currentDay) ? a + b.soTien : a);
     _cachedTongMuc[muc] = total;
     return total;
   }

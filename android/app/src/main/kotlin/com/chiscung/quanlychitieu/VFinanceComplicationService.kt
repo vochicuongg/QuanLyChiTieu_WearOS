@@ -42,16 +42,25 @@ class VFinanceComplicationService : SuspendingComplicationDataSourceService() {
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         
-        // Read today's total from SharedPreferences
-        val todayTotal = try {
-            val totalStr = prefs.getString("flutter.tile_today_total", "0") ?: "0"
-            totalStr.toLongOrNull() ?: 0L
-        } catch (e: Exception) {
-            try { 
-                prefs.getFloat("flutter.tile_today_total", 0f).toLong()
-            } catch (e2: Exception) {
-                try { prefs.getLong("flutter.tile_today_total", 0L) } catch (e3: Exception) { 0L }
+        // Check if saved data is from today
+        val savedDate = prefs.getString("flutter.tile_data_date", "") ?: ""
+        val todayDate = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+        val isDataFromToday = savedDate == todayDate
+        
+        // Read today's total from SharedPreferences (reset to 0 if not from today)
+        val todayTotal = if (isDataFromToday) {
+            try {
+                val totalStr = prefs.getString("flutter.tile_today_total", "0") ?: "0"
+                totalStr.toLongOrNull() ?: 0L
+            } catch (e: Exception) {
+                try { 
+                    prefs.getFloat("flutter.tile_today_total", 0f).toLong()
+                } catch (e2: Exception) {
+                    try { prefs.getLong("flutter.tile_today_total", 0L) } catch (e3: Exception) { 0L }
+                }
             }
+        } else {
+            0L // Reset to 0 if data is not from today
         }
         
         val language = prefs.getString("flutter.app_language", "vi") ?: "vi"
