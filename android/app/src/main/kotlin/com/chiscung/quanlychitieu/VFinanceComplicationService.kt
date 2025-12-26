@@ -75,15 +75,12 @@ class VFinanceComplicationService : SuspendingComplicationDataSourceService() {
             0L
         }
         
-        // Convert to USD if currency is $
-        val todayTotal = if (currency == "$") {
-            (todayTotalVnd * exchangeRate).toLong()
-        } else {
-            todayTotalVnd
-        }
+        // Convert to USD if currency is $ (keep as Double for precision)
+        val todayTotalUsd = todayTotalVnd * exchangeRate
+        val todayTotal = if (currency == "$") todayTotalUsd.toLong() else todayTotalVnd
         
         val language = prefs.getString("flutter.app_language", "vi") ?: "vi"
-        val formatted = formatCompactSplit(todayTotal, language, currency)
+        val formatted = formatCompactSplit(todayTotal, language, currency, todayTotalUsd)
         
         // Create tap action to open the app
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -135,54 +132,69 @@ class VFinanceComplicationService : SuspendingComplicationDataSourceService() {
         }
     }
 
-    // Helper function to format number with dot separator
-    private fun formatWithDots(num: Double): String {
+    // Helper function to format number with comma separator (US style: 72,459)
+    private fun formatWithCommas(num: Double): String {
         val intPart = num.toLong()
         if (intPart < 1000) return intPart.toString()
-        val formatter = NumberFormat.getNumberInstance(Locale("vi", "VN"))
-        return formatter.format(intPart).replace(",", ".")
+        val formatter = NumberFormat.getNumberInstance(Locale.US)
+        formatter.maximumFractionDigits = 0
+        return formatter.format(intPart)
+    }
+    
+    // Format USD amount with commas as thousand separators and 2 decimal places (e.g., 2,294.69)
+    private fun formatUsdAmount(amount: Double): String {
+        val formatter = NumberFormat.getNumberInstance(Locale.US)
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter.format(amount)
     }
 
     // Split format: returns number and suffix separately
-    private fun formatCompactSplit(value: Long, language: String = "vi", currency: String = "đ"): FormattedAmount {
+    private fun formatCompactSplit(value: Long, language: String = "vi", currency: String = "đ", usdAmount: Double = 0.0): FormattedAmount {
         val isEn = language == "en" || currency == "$"
         val isUsd = currency == "$"
         
-        // For USD, don't use K suffix for amounts under $10,000 - show exact number
+        // For USD, don't use K suffix for amounts under $10,000 - show exact number with decimals
         if (isUsd && value < 10_000L) {
-            return FormattedAmount(formatWithDots(value.toDouble()), "")
+            return FormattedAmount(formatUsdAmount(usdAmount), "")
         }
         
         return when {
             value >= 1_000_000_000_000L -> {
                 val num = value / 1_000_000_000_000.0
                 if (isEn) {
-                    if (num >= 1000) FormattedAmount(formatWithDots(num / 1000), "Q")
-                    else if (num >= 1) FormattedAmount(formatWithDots(num), "T")
+                    if (num >= 1000) FormattedAmount(formatWithCommas(num / 1000), "Q")
+                    else if (num >= 1) FormattedAmount(formatWithCommas(num), "T")
                     else FormattedAmount(String.format("%.1f", num).replace(".0", ""), "T")
                 } else {
                     val tyValue = value / 1_000_000_000.0
-                    FormattedAmount(formatWithDots(tyValue), "T")
+                    FormattedAmount(formatWithCommas(tyValue), "T")
                 }
             }
             value >= 1_000_000_000L -> {
                 val num = value / 1_000_000_000.0
                 if (isEn) {
-                    FormattedAmount(formatWithDots(num), "B")
+                    FormattedAmount(formatWithCommas(num), "B")
                 } else {
-                    FormattedAmount(formatWithDots(num), "T")
+                    FormattedAmount(formatWithCommas(num), "T")
                 }
             }
             value >= 1_000_000L -> {
-                val num = value / 1_000_000.0
                 val suffix = if (isEn) "M" else "TR"
-                val numStr = if (num >= 100) formatWithDots(num)
-                             else String.format("%.1f", num).replace(".0", "")
-                FormattedAmount(numStr, suffix)
+                if (isEn) {
+                    val numM = value / 1_000_000.0
+                    val numStr = if (numM >= 100) formatWithCommas(numM)
+                                 else String.format("%.1f", numM).replace(".0", "")
+                    FormattedAmount(numStr, suffix)
+                } else {
+                    // Vietnamese: 72,459,000 -> 72,459TR
+                    val num = value / 1_000.0
+                    FormattedAmount(formatWithCommas(num), suffix)
+                }
             }
             value >= 1_000L -> {
                 val num = value / 1_000.0
-                val numStr = if (num >= 100) formatWithDots(num)
+                val numStr = if (num >= 100) formatWithCommas(num)
                              else String.format("%.1f", num).replace(".0", "")
                 FormattedAmount(numStr, "K")
             }

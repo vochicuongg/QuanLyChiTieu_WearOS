@@ -60,12 +60,9 @@ class VFinanceTileService : TileService() {
             0L
         }
         
-        // Convert to USD if currency is $
-        val todayTotal = if (currency == "$") {
-            (todayTotalVnd * exchangeRate).toLong()
-        } else {
-            todayTotalVnd
-        }
+        // Convert to USD if currency is $ (keep Double for precision)
+        val todayTotalUsd = todayTotalVnd * exchangeRate
+        val todayTotal = if (currency == "$") todayTotalUsd.toLong() else todayTotalVnd
         
         val language = prefs.getString("flutter.app_language", "vi") ?: "vi"
         val topExpensesJson = if (isDataFromToday) {
@@ -86,23 +83,25 @@ class VFinanceTileService : TileService() {
                 val obj1 = jsonArray.getJSONObject(0)
                 val cat1 = obj1.optString("category", "khac")
                 val amt1Vnd = obj1.optLong("amount", 0L)
-                val amt1 = if (currency == "$") (amt1Vnd * exchangeRate).toLong() else amt1Vnd
+                val amt1Usd = amt1Vnd * exchangeRate
+                val amt1 = if (currency == "$") amt1Usd.toLong() else amt1Vnd
                 val catName1 = if (language == "en") getCategoryNameEn(cat1) else obj1.optString("categoryVi", "Khác")
                 expense1Name = getCategoryIcon(cat1) + " " + truncateName(catName1)
-                expense1Amt = formatCompact(amt1, language, currency)
+                expense1Amt = formatCompact(amt1, language, currency, amt1Usd)
             }
             if (jsonArray.length() >= 2) {
                 val obj2 = jsonArray.getJSONObject(1)
                 val cat2 = obj2.optString("category", "khac")
                 val amt2Vnd = obj2.optLong("amount", 0L)
-                val amt2 = if (currency == "$") (amt2Vnd * exchangeRate).toLong() else amt2Vnd
+                val amt2Usd = amt2Vnd * exchangeRate
+                val amt2 = if (currency == "$") amt2Usd.toLong() else amt2Vnd
                 val catName2 = if (language == "en") getCategoryNameEn(cat2) else obj2.optString("categoryVi", "Khác")
                 expense2Name = getCategoryIcon(cat2) + " " + truncateName(catName2)
-                expense2Amt = formatCompact(amt2, language, currency)
+                expense2Amt = formatCompact(amt2, language, currency, amt2Usd)
             }
         } catch (e: Exception) { }
         
-        val formattedAmount = formatCompact(todayTotal, language, currency)
+        val formattedAmount = formatCompact(todayTotal, language, currency, todayTotalUsd)
         val currencySymbol = if (currency == "$") "$" else "đ"
         val titleText = if (language == "vi") "Tổng chi tiêu hôm nay" else "Total spending today"
         val topLabel = if (language == "vi") "Chi tiêu lớn nhất" else "Top spending"
@@ -380,24 +379,35 @@ class VFinanceTileService : TileService() {
         return formatter.format(value).replace(",", ".")
     }
     
-    // Helper function to format number with dot separator
-    private fun formatWithDots(num: Double): String {
+    // Helper function to format number with comma separator (US style: 72,459)
+    private fun formatWithCommas(num: Double): String {
         val intPart = num.toLong()
         if (intPart < 1000) return intPart.toString()
-        val formatter = NumberFormat.getNumberInstance(Locale("vi", "VN"))
-        return formatter.format(intPart).replace(",", ".")
+        val formatter = NumberFormat.getNumberInstance(Locale.US)
+        formatter.maximumFractionDigits = 0
+        return formatter.format(intPart)
+    }
+    
+    // Format USD amount with 2 decimal places when it has cents
+    private fun formatUsdAmount(amount: Double): String {
+        val cents = amount - amount.toLong()
+        return if (cents > 0.001) {
+            String.format(Locale.US, "%.2f", amount)
+        } else {
+            amount.toLong().toString()
+        }
     }
     
     // Compact format for expense boxes
     // Vietnamese: T (tỷ=10^9), Tr (triệu=10^6), K (nghìn=10^3)
     // English/USD: B (billion=10^9), M (million=10^6), K (thousand=10^3)
-    private fun formatCompact(value: Long, language: String = "vi", currency: String = "đ"): String {
+    private fun formatCompact(value: Long, language: String = "vi", currency: String = "đ", usdAmount: Double = 0.0): String {
         val isEn = language == "en" || currency == "$"
         val isUsd = currency == "$"
         
-        // For USD, don't use K suffix for amounts under $10,000 - show exact number
+        // For USD, don't use K suffix for amounts under $10,000 - show exact number with decimals
         if (isUsd && value < 10_000L) {
-            return formatWithDots(value.toDouble())
+            return formatUsdAmount(usdAmount)
         }
         
         return when {
@@ -405,34 +415,43 @@ class VFinanceTileService : TileService() {
             value >= 1_000_000_000_000L -> {
                 val num = value / 1_000_000_000_000.0
                 if (isEn) {
-                    if (num >= 1000) formatWithDots(num / 1000) + "Q"
-                    else if (num >= 1) formatWithDots(num) + "T"
+                    if (num >= 1000) formatWithCommas(num / 1000) + "Q"
+                    else if (num >= 1) formatWithCommas(num) + "T"
                     else String.format("%.1f", num).replace(".0", "") + "T"
                 } else {
+                    // For VND: show as Ty (e.g., 1,234T for 1.234 trillion)
                     val tyValue = value / 1_000_000_000.0
-                    formatWithDots(tyValue) + "T"
+                    formatWithCommas(tyValue) + "T"
                 }
             }
             // >= 1 billion (10^9)
             value >= 1_000_000_000L -> {
                 val num = value / 1_000_000_000.0
                 if (isEn) {
-                    formatWithDots(num) + "B"
+                    formatWithCommas(num) + "B"
                 } else {
-                    formatWithDots(num) + "T"
+                    // For VND: show as Ty (e.g., 1.5T for 1.5 billion)
+                    formatWithCommas(num) + "T"
                 }
             }
             // >= 1 million (10^6)
             value >= 1_000_000L -> {
-                val num = value / 1_000_000.0
+                // For VND: show thousands in millions (72,459,000 -> 72,459Tr)
+                val num = value / 1_000.0  // Divide by 1000 to get thousands
                 val suffix = if (isEn) "M" else "Tr"
-                if (num >= 100) formatWithDots(num) + suffix
-                else String.format("%.1f", num).replace(".0", "") + suffix
+                if (isEn) {
+                    val numM = value / 1_000_000.0
+                    if (numM >= 100) formatWithCommas(numM) + suffix
+                    else String.format("%.1f", numM).replace(".0", "") + suffix
+                } else {
+                    // Vietnamese: 72,459,000 -> 72,459Tr
+                    formatWithCommas(num) + suffix
+                }
             }
             // >= 1 thousand (10^3)
             value >= 1_000L -> {
                 val num = value / 1_000.0
-                if (num >= 100) formatWithDots(num) + "K"
+                if (num >= 100) formatWithCommas(num) + "K"
                 else String.format("%.1f", num).replace(".0", "") + "K"
             }
             else -> value.toString()

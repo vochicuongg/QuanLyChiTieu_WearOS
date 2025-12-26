@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 
 // Global SharedPreferences instance for faster access
@@ -158,14 +159,28 @@ String formatAmountWithCurrency(int vndAmount) {
   if (_appCurrency == 'đ') {
     return '${dinhDangSo(vndAmount)} đ';
   } else {
-    // Always show exact USD amount with 2 decimal places
+    // Always show exact USD amount with 2 decimal places and comma separators
     final usdDouble = vndAmount * _exchangeRate;
-    if (usdDouble >= 1000) {
-      // For large amounts, show as whole number with comma separators
-      return '\$${dinhDangSo(usdDouble.toInt())}';
-    }
-    return '\$${usdDouble.toStringAsFixed(2)}';
+    return '\$${_formatUsdWithCommas(usdDouble)}';
   }
+}
+
+// Format USD with commas as thousand separators and 2 decimal places (e.g., 2,294.69)
+String _formatUsdWithCommas(double amount) {
+  // Split into integer and decimal parts
+  final intPart = amount.truncate();
+  final decimalPart = ((amount - intPart) * 100).round();
+  
+  // Format integer part with commas
+  final intStr = intPart.toString().replaceAllMapped(
+    _numberFormatRegex,
+    (m) => '${m[1]},',
+  );
+  
+  // Format decimal part with leading zero if needed
+  final decStr = decimalPart.toString().padLeft(2, '0');
+  
+  return '$intStr.$decStr';
 }
 
 // =================== CLOCK ===================
@@ -2700,12 +2715,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _selectedCurrency;
   bool _languageExpanded = false;
   bool _currencyExpanded = false;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _selectedLanguage = _appLanguage;
     _selectedCurrency = _appCurrency;
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = info.version;
+      });
+    }
   }
 
   Future<void> _setLanguage(String lang) async {
@@ -2954,6 +2980,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  
+                  // Version/Profile Section
+                  GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => Dialog(
+                          backgroundColor: Colors.grey[900],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ClipOval(
+                                  child: Image.asset(
+                                    'assets/icon/app_icon.png',
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'VFinance',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'v$_appVersion',
+                                  style: const TextStyle(
+                                    color: Color(0xFF4CAF93),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  isVietnamese 
+                                      ? 'Quản lý chi tiêu trên Wear OS\nPhát triển bởi © 2025-vochicuongg.'
+                                      : 'Expense Manager on Wear OS\nDeveloped by © 2025-vochicuongg.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 8,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                GestureDetector(
+                                  onTap: () => Navigator.pop(context),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF4CAF93),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Text(
+                                      isVietnamese ? 'Đóng' : 'Close',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded, color: Colors.white70, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              isVietnamese ? 'Thông tin' : 'Information',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white54,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   
                   // QR Code Section - Compact
@@ -3063,4 +3199,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-} 
+}
