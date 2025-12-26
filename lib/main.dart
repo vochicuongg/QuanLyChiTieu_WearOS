@@ -75,7 +75,7 @@ String dinhDangGio(DateTime time) {
 String dinhDangNgayDayDu(DateTime time) {
   final d = time.day.toString().padLeft(2, '0');
   final mo = time.month.toString().padLeft(2, '0');
-  final y = time.year.toString().padLeft(2, '0');
+  final y = time.year.toString(); // 4-digit year for consistency with Kotlin Tile/Complication
   return '$d/$mo/$y';
 }
 
@@ -83,7 +83,7 @@ String dinhDangNgayDayDu(DateTime time) {
 String dinhDangNgayHienThi(DateTime time) {
   final d = time.day.toString().padLeft(2, '0');
   final mo = time.month.toString().padLeft(2, '0');
-  final y = time.year.toString().padLeft(2, '0');
+  final y = time.year.toString(); // 4-digit year for consistency
   if (_appLanguage == 'en') {
     return '$mo/$d/$y';
   }
@@ -283,12 +283,14 @@ class ChiTieuItem {
 
 // =================== CATEGORY ===================
 
-enum ChiTieuMuc { nhaTro, hocPhi, thucAn, doUong, xang, muaSam, suaXe, khac, lichSu, caiDat }
+enum ChiTieuMuc { soDu, nhaTro, hocPhi, thucAn, doUong, xang, muaSam, suaXe, khac, lichSu, caiDat }
 
 extension ChiTieuMucX on ChiTieuMuc {
   String get ten {
     final isVi = _appLanguage == 'vi';
     switch (this) {
+      case ChiTieuMuc.soDu:
+        return isVi ? 'Số dư' : 'Balance';
       case ChiTieuMuc.nhaTro:
         return isVi ? 'Nhà trọ' : 'Rent';
       case ChiTieuMuc.hocPhi:
@@ -314,6 +316,8 @@ extension ChiTieuMucX on ChiTieuMuc {
 
   IconData get icon {
     switch (this) {
+      case ChiTieuMuc.soDu:
+        return Icons.account_balance_wallet_rounded;
       case ChiTieuMuc.nhaTro:
         return Icons.home_rounded;
       case ChiTieuMuc.hocPhi:
@@ -448,7 +452,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
       _exchangeRate = savedExchangeRate;
     }
     
-    // Load _chiTheoMuc
+    // Load _chiTheoMuc (including soDu for income tracking)
     final chiTheoMucJson = prefs.getString(_keyChiTheoMuc);
     if (chiTheoMucJson != null) {
       try {
@@ -501,7 +505,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
   Future<void> _saveData() async {
     final prefs = _prefs ?? await SharedPreferences.getInstance();
     
-    // Save _chiTheoMuc
+    // Save _chiTheoMuc (including soDu for income tracking)
     final Map<String, dynamic> chiTheoMucData = {};
     for (final muc in ChiTieuMuc.values) {
       if (muc == ChiTieuMuc.lichSu || muc == ChiTieuMuc.caiDat) continue;
@@ -525,18 +529,26 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     // Collect expenses aggregated by category for Tile (filter by current day)
     final Map<ChiTieuMuc, int> categoryTotals = {};
     int todayTotal = 0;
+    int todayIncome = 0;
+
     for (final muc in ChiTieuMuc.values) {
       if (muc == ChiTieuMuc.lichSu || muc == ChiTieuMuc.caiDat) continue;
+      
       final items = _chiTheoMuc[muc] ?? <ChiTieuItem>[];
       int categorySum = 0;
+      
       for (final item in items) {
         // Only include expenses from the current day
         if (_sameDay(item.thoiGian, _currentDay)) {
-          todayTotal += item.soTien;
-          categorySum += item.soTien;
+          if (muc == ChiTieuMuc.soDu) {
+            todayIncome += item.soTien;
+          } else {
+            todayTotal += item.soTien;
+            categorySum += item.soTien;
+          }
         }
       }
-      if (categorySum > 0) {
+      if (categorySum > 0 && muc != ChiTieuMuc.soDu) {
         categoryTotals[muc] = categorySum;
       }
     }
@@ -552,6 +564,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     
     // Save tile data with current date for day validation
     await prefs.setString('tile_today_total', todayTotal.toString());
+    await prefs.setString('tile_today_income_v2', todayIncome.toString());
     await prefs.setString('tile_data_date', dinhDangNgayDayDu(_currentDay));
     await prefs.setString('app_language', _appLanguage);
     await prefs.setString('app_currency', _appCurrency);
@@ -651,7 +664,7 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
     _cachedTongHomNay = _chiTheoMuc.entries.fold<int>(
       0,
       (sum, entry) {
-        if (entry.key == ChiTieuMuc.lichSu || entry.key == ChiTieuMuc.caiDat) return sum;
+        if (entry.key == ChiTieuMuc.soDu || entry.key == ChiTieuMuc.lichSu || entry.key == ChiTieuMuc.caiDat) return sum;
         return sum + entry.value.fold<int>(
           0,
           (a, b) => _sameDay(b.thoiGian, _currentDay) ? a + b.soTien : a,
@@ -662,6 +675,43 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
   }
 
   Future<void> _moMuc(ChiTieuMuc muc) async {
+    if (muc == ChiTieuMuc.soDu) {
+      // Navigate to income/balance detail screen
+      final danhSachThuNhap = (_chiTheoMuc[muc] ?? [])
+          .where((item) => _sameDay(item.thoiGian, _currentDay))
+          .toList();
+
+      // Calculate historical expenses from _lichSuThang
+      int tongChiLichSu = 0;
+      for (final monthData in _lichSuThang.values) {
+        for (final dayData in monthData.values) {
+          for (final entry in dayData) {
+            if (entry.muc != ChiTieuMuc.soDu) {
+              tongChiLichSu += entry.item.soTien;
+            }
+          }
+        }
+      }
+
+      final updated = await Navigator.push<List<ChiTieuItem>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SoDuScreen(
+            danhSachThuNhap: danhSachThuNhap,
+            tongChiHomNay: _tongHomNay,
+            tongChiLichSu: tongChiLichSu,
+            currentDay: _currentDay,
+            onDataChanged: (newList) => _capNhatLichSuSauThayDoi(muc, newList),
+          ),
+        ),
+      );
+
+      if (updated != null) {
+        _capNhatLichSuSauThayDoi(muc, updated);
+      }
+      return;
+    }
+
     if (muc == ChiTieuMuc.lichSu) {
       await Navigator.push(
         context,
@@ -816,6 +866,128 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                                     ),
                                   ),
                                 ),
+                                // Show remaining balance only if user has income
+                                if (_tongMuc(ChiTieuMuc.soDu) > 0) ...[
+                                  SizedBox(height: 2 * (1.0 - progress * 0.5)),
+                                  Opacity(
+                                    opacity: headerOpacity.clamp(0.0, 1.0),
+                                    child: Transform.scale(
+                                      scale: headerScale * 0.85,
+                                      child: Padding(
+                                        padding: EdgeInsets.symmetric(horizontal: edge),
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            () {
+                                              // Current month key for filtering
+                                              final currentMonthKey = getMonthKey(_currentDay);
+                                              final todayDayKey = dinhDangNgayDayDu(_currentDay);
+                                              
+                                              // Total income from today (stored in _chiTheoMuc)
+                                              int totalIncome = (_chiTheoMuc[ChiTieuMuc.soDu] ?? <ChiTieuItem>[])
+                                                  .where((item) => _sameDay(item.thoiGian, _currentDay))
+                                                  .fold(0, (sum, item) => sum + item.soTien);
+                                              
+                                              // Add historical income from current month
+                                              final currentMonthData = _lichSuThang[currentMonthKey];
+                                              if (currentMonthData != null) {
+                                                // Since we filtered _chiTheoMuc to ONLY today, we can safely add all history
+                                                // excluding today (just in case history somehow has today, though unlikely)
+                                                for (final dayEntry in currentMonthData.entries) {
+                                                  if (dayEntry.key == todayDayKey) continue;
+                                                  for (final entry in dayEntry.value) {
+                                                    if (entry.muc == ChiTieuMuc.soDu) {
+                                                      totalIncome += entry.item.soTien;
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                              
+                                              // Total expenses from today (stored in _chiTheoMuc)
+                                              int totalExpenses = 0;
+                                              for (final entry in _chiTheoMuc.entries) {
+                                                if (entry.key == ChiTieuMuc.soDu || 
+                                                    entry.key == ChiTieuMuc.lichSu || 
+                                                    entry.key == ChiTieuMuc.caiDat) continue;
+                                                totalExpenses += entry.value
+                                                    .where((item) => _sameDay(item.thoiGian, _currentDay))
+                                                    .fold(0, (sum, item) => sum + item.soTien);
+                                              }
+                                              // Add historical expenses from current month
+                                              if (currentMonthData != null) {
+                                                for (final dayEntry in currentMonthData.entries) {
+                                                  if (dayEntry.key == todayDayKey) continue;
+                                                  for (final entry in dayEntry.value) {
+                                                    if (entry.muc != ChiTieuMuc.soDu) {
+                                                      totalExpenses += entry.item.soTien;
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                              final remaining = totalIncome - totalExpenses;
+                                              final label = _appLanguage == 'vi' ? 'Còn lại: ' : 'Left: ';
+                                              // Show negative value when overspent
+                                              if (remaining < 0) {
+                                                return '$label-${formatAmountWithCurrency(remaining.abs())}';
+                                              }
+                                              return '$label${formatAmountWithCurrency(remaining)}';
+                                            }(),
+                                            style: TextStyle(
+                                              // Green if positive/zero, red if overspent
+                                              color: () {
+                                                // Current month key for filtering
+                                                final currentMonthKey = getMonthKey(_currentDay);
+                                                final todayDayKey = dinhDangNgayDayDu(_currentDay);
+                                                
+                                                int totalIncome = (_chiTheoMuc[ChiTieuMuc.soDu] ?? <ChiTieuItem>[])
+                                                    .where((item) => _sameDay(item.thoiGian, _currentDay))
+                                                    .fold(0, (sum, item) => sum + item.soTien);
+                                                // Add historical income from current month only (excluding today)
+                                                final currentMonthData = _lichSuThang[currentMonthKey];
+                                                if (currentMonthData != null) {
+                                                  for (final dayEntry in currentMonthData.entries) {
+                                                    if (dayEntry.key == todayDayKey) continue;
+                                                    for (final e in dayEntry.value) {
+                                                      if (e.muc == ChiTieuMuc.soDu) {
+                                                        totalIncome += e.item.soTien;
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                                int totalExpenses = 0;
+                                                for (final entry in _chiTheoMuc.entries) {
+                                                  if (entry.key == ChiTieuMuc.soDu || 
+                                                      entry.key == ChiTieuMuc.lichSu || 
+                                                      entry.key == ChiTieuMuc.caiDat) continue;
+                                                  totalExpenses += entry.value
+                                                      .where((item) => _sameDay(item.thoiGian, _currentDay))
+                                                      .fold(0, (sum, item) => sum + item.soTien);
+                                                }
+                                                // Add historical expenses from current month only (excluding today)
+                                                if (currentMonthData != null) {
+                                                  for (final dayEntry in currentMonthData.entries) {
+                                                    if (dayEntry.key == todayDayKey) continue;
+                                                    for (final e in dayEntry.value) {
+                                                      if (e.muc != ChiTieuMuc.soDu) {
+                                                        totalExpenses += e.item.soTien;
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                                return (totalIncome - totalExpenses) >= 0
+                                                    ? const Color(0xFF4CAF93)
+                                                    : const Color(0xFFE57373);
+                                              }(),
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 SizedBox(height: 10 * (1.0 - progress * 0.3)),
                               ],
                             ),
@@ -830,12 +1002,22 @@ class _ChiTieuAppState extends State<ChiTieuApp> {
                         scrollController: _scrollAnimController,
                         itemBuilder: (context, i) {
                           final muc = ChiTieuMuc.values[i];
-                          final tongMuc =
-                              (muc == ChiTieuMuc.lichSu || muc == ChiTieuMuc.caiDat) ? 0 : _tongMuc(muc);
+                          // For soDu, show total income entered (not remaining balance)
+                          int displayAmount;
+                          if (muc == ChiTieuMuc.lichSu || muc == ChiTieuMuc.caiDat) {
+                            displayAmount = 0;
+                          } else if (muc == ChiTieuMuc.soDu) {
+                            // Show total income entered
+                            displayAmount = (_chiTheoMuc[ChiTieuMuc.soDu] ?? <ChiTieuItem>[])
+                                .fold(0, (sum, item) => sum + item.soTien);
+                          } else {
+                            displayAmount = _tongMuc(muc);
+                          }
 
                           return _CategoryButton(
                             icon: muc.icon,
-                            tongTien: tongMuc,
+                            tongTien: displayAmount,
+                            isBalance: muc == ChiTieuMuc.soDu,
                             onTap: () => _moMuc(muc),
                           );
                         },
@@ -947,6 +1129,7 @@ class _CategoryButton extends StatelessWidget {
   final IconData icon;
   final int tongTien;
   final VoidCallback onTap;
+  final bool isBalance;
 
   // Pre-cached decoration for performance
   static final BorderRadius _borderRadius = BorderRadius.circular(18);
@@ -958,6 +1141,7 @@ class _CategoryButton extends StatelessWidget {
     required this.icon,
     required this.tongTien,
     required this.onTap,
+    this.isBalance = false,
   });
 
   @override
@@ -982,8 +1166,9 @@ class _CategoryButton extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   formatAmountWithCurrency(tongTien),
-                  style: const TextStyle(
-                    color: Color(0xFFF08080),
+                  style: TextStyle(
+                    // Green for balance, coral red for expenses
+                    color: isBalance ? const Color(0xFF4CAF93) : const Color(0xFFF08080),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
@@ -993,6 +1178,396 @@ class _CategoryButton extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// =================== INCOME/BALANCE DETAIL SCREEN ===================
+
+class SoDuScreen extends StatefulWidget {
+  final List<ChiTieuItem> danhSachThuNhap;
+  final int tongChiHomNay;
+  final int tongChiLichSu; // Historical expenses
+  final DateTime currentDay;
+  final Function(List<ChiTieuItem>)? onDataChanged;
+
+  const SoDuScreen({
+    super.key,
+    required this.danhSachThuNhap,
+    required this.tongChiHomNay,
+    required this.tongChiLichSu,
+    required this.currentDay,
+    this.onDataChanged,
+  });
+
+  @override
+  State<SoDuScreen> createState() => _SoDuScreenState();
+}
+
+class _SoDuScreenState extends State<SoDuScreen> {
+  late List<ChiTieuItem> danhSachThuNhap;
+  bool dangChonXoa = false;
+
+  int get tongThuNhap => danhSachThuNhap.fold(0, (a, b) => a + b.soTien);
+
+  @override
+  void initState() {
+    super.initState();
+    danhSachThuNhap = List<ChiTieuItem>.from(widget.danhSachThuNhap);
+  }
+
+  Future<void> themThuNhap() async {
+    final soTien = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(builder: (_) => const NhapSoTienScreen()),
+    );
+
+    if (soTien != null && soTien > 0) {
+      setState(() {
+        danhSachThuNhap.add(
+          ChiTieuItem(soTien: soTien, thoiGian: DateTime.now()),
+        );
+        widget.onDataChanged?.call(danhSachThuNhap);
+      });
+    }
+  }
+
+  Future<void> chinhSuaThuNhap(int index) async {
+    if (dangChonXoa) return;
+    final soTienMoi = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NhapSoTienScreen(
+          soTienBanDau: danhSachThuNhap[index].soTien,
+        ),
+      ),
+    );
+
+    if (soTienMoi != null && soTienMoi > 0) {
+      setState(() {
+        danhSachThuNhap[index] = danhSachThuNhap[index].copyWith(
+          soTien: soTienMoi,
+          thoiGian: DateTime.now(),
+        );
+        widget.onDataChanged?.call(danhSachThuNhap);
+      });
+    }
+  }
+
+  void batDauChonXoa() {
+    if (danhSachThuNhap.isEmpty) return;
+    setState(() {
+      dangChonXoa = true;
+    });
+  }
+
+  void huyChonXoa() {
+    setState(() {
+      dangChonXoa = false;
+    });
+  }
+
+  Future<void> xacNhanXoa(int index) async {
+    final soTien = danhSachThuNhap[index].soTien;
+    final dongY = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => XacNhanXoaScreen(soTien: soTien, isIncome: true),
+      ),
+    );
+
+    if (dongY == true) {
+      setState(() {
+        danhSachThuNhap.removeAt(index);
+        if (danhSachThuNhap.isEmpty) {
+          dangChonXoa = false;
+        }
+        widget.onDataChanged?.call(danhSachThuNhap);
+      });
+    }
+  }
+
+  Widget _circleBtn(IconData icon, Color bg, {Color colorIcon = Colors.white}) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Icon(icon, color: colorIcon, size: 22),
+    );
+  }
+
+  List<_ListRow> _nhomTheoNgay(List<ChiTieuItem> items) {
+    final sorted = List<ChiTieuItem>.from(items);
+    sorted.sort((a, b) => b.thoiGian.compareTo(a.thoiGian));
+
+    final List<_ListRow> rows = [];
+    final Map<String, List<ChiTieuItem>> grouped = {};
+
+    for (var item in sorted) {
+      final dateKey = dinhDangNgayDayDu(item.thoiGian);
+      grouped.putIfAbsent(dateKey, () => []);
+      grouped[dateKey]!.add(item);
+    }
+
+    final sortedDateKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        final pa = a.split('/');
+        final pb = b.split('/');
+        final da = DateTime(int.parse(pa[2]), int.parse(pa[1]), int.parse(pa[0]));
+        final db = DateTime(int.parse(pb[2]), int.parse(pb[1]), int.parse(pb[0]));
+        return db.compareTo(da);
+      });
+
+    for (var dateKey in sortedDateKeys) {
+      final dailyList = grouped[dateKey]!;
+      final dailySum = dailyList.fold(0, (sum, item) => sum + item.soTien);
+      rows.add(_ListRow.header(dateKey, dailySum));
+      rows.addAll(dailyList.map((e) => _ListRow.item(e)));
+    }
+
+    return rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Include historical expenses in remaining calculation
+    final remaining = tongThuNhap - widget.tongChiHomNay - widget.tongChiLichSu;
+    final isOverspent = remaining < 0;
+
+    final rows = _nhomTheoNgay(danhSachThuNhap);
+
+    return WillPopScope(
+      onWillPop: () async {
+        if (dangChonXoa) {
+          huyChonXoa();
+          return false;
+        }
+        widget.onDataChanged?.call(danhSachThuNhap);
+        Navigator.pop(context, danhSachThuNhap);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final edge = (constraints.maxWidth * 0.10).clamp(16.0, 36.0).toDouble();
+              final dateMaxWidth = (constraints.maxWidth * 0.40).clamp(72.0, 120.0).toDouble();
+
+              return Stack(
+                children: [
+                  const _WatchBackground(),
+                  Column(
+                    children: [
+                      const SizedBox(height: 4),
+                      const ClockText(),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            _appLanguage == 'vi' ? 'Số dư' : 'Balance',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Total Income Display
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: edge),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            formatAmountWithCurrency(tongThuNhap),
+                            style: const TextStyle(
+                              color: Color(0xFF4CAF93),
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // Income list grouped by date
+                      Expanded(
+                        child: ListView.builder(
+                          padding: EdgeInsets.symmetric(horizontal: edge, vertical: 4),
+                          itemCount: rows.length,
+                          itemBuilder: (context, index) {
+                            final row = rows[index];
+
+                            if (row.isHeader) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      row.dateHeader!,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          formatAmountWithCurrency(row.dailyTotal!),
+                                          style: const TextStyle(
+                                            color: Color(0xFF4CAF93),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+
+                            final item = row.item!;
+                            final timeText = dinhDangGio(item.thoiGian);
+                            final moneyText = formatAmountWithCurrency(item.soTien);
+                            final originalIndex = danhSachThuNhap.indexOf(item);
+
+                            return GestureDetector(
+                              onTap: () {
+                                if (dangChonXoa) {
+                                  xacNhanXoa(originalIndex);
+                                } else {
+                                  chinhSuaThuNhap(originalIndex);
+                                }
+                              },
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 3),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: dangChonXoa
+                                      ? Colors.red.withOpacity(0.15)
+                                      : Colors.white12,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: dangChonXoa
+                                      ? Border.all(color: Colors.redAccent.withOpacity(0.5), width: 1)
+                                      : null,
+                                ),
+                                child: Row(
+                                  children: [
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(maxWidth: dateMaxWidth),
+                                      child: Text(
+                                        timeText,
+                                        style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            moneyText,
+                                            style: const TextStyle(
+                                              color: Color(0xFF4CAF93),
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      dangChonXoa ? Icons.remove_circle_outline : Icons.edit,
+                                      color: dangChonXoa ? Colors.redAccent : Colors.white30,
+                                      size: 14,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      // Action buttons
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16, top: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                if (dangChonXoa) {
+                                  huyChonXoa();
+                                } else {
+                                  batDauChonXoa();
+                                }
+                              },
+                              child: _circleBtn(
+                                dangChonXoa ? Icons.close : Icons.delete_outline,
+                                dangChonXoa
+                                    ? const Color(0xFF555555)
+                                    : (danhSachThuNhap.isEmpty
+                                        ? const Color(0xFF333333)
+                                        : const Color(0xFFE57373)),
+                                colorIcon: danhSachThuNhap.isEmpty && !dangChonXoa
+                                    ? Colors.white38
+                                    : Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            GestureDetector(
+                              onTap: dangChonXoa ? null : themThuNhap,
+                              child: _circleBtn(
+                                Icons.add,
+                                dangChonXoa
+                                    ? const Color(0xFF333333)
+                                    : const Color(0xFF4CAF93),
+                                colorIcon: dangChonXoa ? Colors.white38 : Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    top: 12,
+                    left: edge,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
+                      onPressed: () {
+                        if (dangChonXoa) {
+                          huyChonXoa();
+                        } else {
+                          widget.onDataChanged?.call(danhSachThuNhap);
+                          Navigator.pop(context, danhSachThuNhap);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1064,18 +1639,6 @@ class _LichSuScreenState extends State<LichSuScreen> {
         child: Stack(
           children: [
             const _WatchBackground(),
-            Positioned(
-              top: 12,
-              left: edge,
-              child: IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white70,
-                  size: 16,
-                ),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
             Column(
               children: [
                 const SizedBox(height: 4),
@@ -1112,9 +1675,19 @@ class _LichSuScreenState extends State<LichSuScreen> {
                             final monthKey = sortedMonths[monthIndex];
                             final daysData = combined[monthKey]!;
 
+                            // Total expenses for month (exclude income/soDu)
                             final totalMonth = daysData.values
                                 .expand((lst) => lst)
+                                .where((e) => e.muc != ChiTieuMuc.soDu)
                                 .fold(0, (s, e) => s + e.item.soTien);
+                            
+                            // Total income for month
+                            final incomeMonth = daysData.values
+                                .expand((lst) => lst)
+                                .where((e) => e.muc == ChiTieuMuc.soDu)
+                                .fold(0, (s, e) => s + e.item.soTien);
+                            final monthlyRemaining = incomeMonth - totalMonth;
+                            final hasAnyIncome = incomeMonth > 0;
 
                             final sortedDays = daysData.keys.toList()
                               ..sort((a, b) {
@@ -1161,17 +1734,38 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                           ),
                                         ),
                                       ),
-                                        Flexible(                                          
-                                          child: FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: Text(
-                                              formatAmountWithCurrency(totalMonth),
-                                              style: const TextStyle(
-                                                color: Color(0xFFF08080),
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
+                                        Flexible(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Text(
+                                                  formatAmountWithCurrency(totalMonth),
+                                                  style: const TextStyle(
+                                                    color: Color(0xFFF08080),
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
+                                              if (hasAnyIncome)
+                                                FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  child: Text(
+                                                    monthlyRemaining >= 0
+                                                        ? formatAmountWithCurrency(monthlyRemaining)
+                                                        : '-${formatAmountWithCurrency(monthlyRemaining.abs())}',
+                                                    style: TextStyle(
+                                                      color: monthlyRemaining >= 0
+                                                          ? const Color(0xFF4CAF93)
+                                                          : const Color(0xFFE57373),
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 10,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
                                           ),
                                         ),
                                       ],                                    
@@ -1193,8 +1787,16 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                         groupByCategory[entry.muc]!.add(entry);
                                       }
 
-                                      // Calculate daily total
-                                      final dayTotal = itemsOnDay.fold(0, (sum, e) => sum + e.item.soTien);
+                                      // Calculate daily total (exclude income/soDu)
+                                      final dayTotal = itemsOnDay
+                                          .where((e) => e.muc != ChiTieuMuc.soDu)
+                                          .fold(0, (sum, e) => sum + e.item.soTien);
+                                      
+                                      // Calculate daily income and remaining
+                                      final dayIncome = itemsOnDay
+                                          .where((e) => e.muc == ChiTieuMuc.soDu)
+                                          .fold(0, (sum, e) => sum + e.item.soTien);
+                                      final dayRemaining = dayIncome - dayTotal;
 
                                       return Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1213,7 +1815,7 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                               },
                                               borderRadius: BorderRadius.circular(8),
                                               child: Padding(
-                                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                                padding: const EdgeInsets.symmetric(vertical: 4),
                                                 child: Row(
                                                   children: [
                                                     Text(
@@ -1226,23 +1828,45 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                       }(),
                                                       style: const TextStyle(
                                                         color: Colors.white70,
-                                                        fontSize: 12,
+                                                        fontSize: 11,
                                                         fontWeight: FontWeight.w600,
                                                       ),
                                                     ),
-                                                    const SizedBox(width: 8),
+                                                    const SizedBox(width: 6),
                                                     Expanded(
-                                                      child: FittedBox(
-                                                        fit: BoxFit.scaleDown,
-                                                        alignment: Alignment.centerRight,
-                                                        child: Text(
-                                                          formatAmountWithCurrency(dayTotal),
-                                                          style: const TextStyle(
-                                                            color: Color(0xFFF08080),
-                                                            fontSize: 11,
-                                                            fontWeight: FontWeight.w500,
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                                        children: [
+                                                          // Expense total in red
+                                                          FittedBox(
+                                                            fit: BoxFit.scaleDown,
+                                                            child: Text(
+                                                              formatAmountWithCurrency(dayTotal),
+                                                              style: const TextStyle(
+                                                                color: Color(0xFFF08080),
+                                                                fontSize: 10,
+                                                                fontWeight: FontWeight.w500,
+                                                              ),
+                                                            ),
                                                           ),
-                                                        ),
+                                                          // Remaining (if there was income)
+                                                          if (dayIncome > 0)
+                                                            FittedBox(
+                                                              fit: BoxFit.scaleDown,
+                                                              child: Text(
+                                                                dayRemaining >= 0
+                                                                    ? formatAmountWithCurrency(dayRemaining)
+                                                                    : '-${formatAmountWithCurrency(dayRemaining.abs())}',
+                                                                style: TextStyle(
+                                                                  color: dayRemaining >= 0
+                                                                      ? const Color(0xFF4CAF93)
+                                                                      : const Color(0xFFE57373),
+                                                                  fontSize: 9,
+                                                                  fontWeight: FontWeight.w500,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                        ],
                                                       ),
                                                     ),
                                                     const SizedBox(width: 4),
@@ -1259,7 +1883,13 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                             ),
                                             if (expanded) ...[
                                               const SizedBox(height: 4),
-                                              ...groupByCategory.entries.map((catEntry) {
+                                              // Sort categories so income (soDu) appears first
+                                              ...(groupByCategory.entries.toList()
+                                                ..sort((a, b) {
+                                                  if (a.key == ChiTieuMuc.soDu) return -1;
+                                                  if (b.key == ChiTieuMuc.soDu) return 1;
+                                                  return 0;
+                                                })).map((catEntry) {
                                                 final muc = catEntry.key;
                                                 final entries = List<HistoryEntry>.from(catEntry.value)
                                                   ..sort((a, b) => b.item.soTien.compareTo(a.item.soTien));
@@ -1278,14 +1908,17 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                             child: FittedBox(
                                                               fit: BoxFit.scaleDown,
                                                               alignment: Alignment.centerLeft,
-                                                              child: Text(
-                                                                formatAmountWithCurrency(totalCat),
-                                                                style: const TextStyle(
-                                                                  color: Colors.white,
-                                                                  fontSize: 12,
-                                                                  fontWeight: FontWeight.w600,
+                                                                child: Text(
+                                                                  formatAmountWithCurrency(totalCat),
+                                                                  style: TextStyle(
+                                                                    // Green for income, white for expenses
+                                                                    color: muc == ChiTieuMuc.soDu
+                                                                        ? const Color(0xFF4CAF93)
+                                                                        : Colors.white,
+                                                                    fontSize: 12,
+                                                                    fontWeight: FontWeight.w600,
+                                                                  ),
                                                                 ),
-                                                              ),
                                                             ),
                                                           ),
                                                         ],
@@ -1296,6 +1929,9 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                         final moneyText = formatAmountWithCurrency(entry.item.soTien);
                                                         final tenChiTieu = entry.item.tenChiTieu;
                                                         final isKhac = entry.muc == ChiTieuMuc.khac && tenChiTieu != null;
+                                                        final isIncome = entry.muc == ChiTieuMuc.soDu;
+                                                        // Income color is green, expenses are white
+                                                        final amountColor = isIncome ? const Color(0xFF4CAF93) : Colors.white;
                                                         
                                                         return Padding(
                                                           padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
@@ -1329,8 +1965,8 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                                             alignment: Alignment.centerRight,
                                                                             child: Text(
                                                                               moneyText,
-                                                                              style: const TextStyle(
-                                                                                color: Colors.white,
+                                                                              style: TextStyle(
+                                                                                color: amountColor,
                                                                                 fontSize: 12,
                                                                               ),
                                                                             ),
@@ -1356,8 +1992,8 @@ class _LichSuScreenState extends State<LichSuScreen> {
                                                                         alignment: Alignment.centerRight,
                                                                         child: Text(
                                                                           moneyText,
-                                                                          style: const TextStyle(
-                                                                            color: Colors.white,
+                                                                          style: TextStyle(
+                                                                            color: amountColor,
                                                                             fontSize: 12,
                                                                           ),
                                                                         ),
@@ -1385,6 +2021,18 @@ class _LichSuScreenState extends State<LichSuScreen> {
                         ),
                 ),
               ],
+            ),
+            Positioned(
+              top: 12,
+              left: edge,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white70,
+                  size: 16,
+                ),
+                onPressed: () => Navigator.pop(context),
+              ),
             ),
           ],
         ),
@@ -1567,25 +2215,6 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
               return Stack(
                 children: [
                   const _WatchBackground(),
-                  Positioned(
-                    top: 12,
-                    left: edge,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white70,
-                        size: 16,
-                      ),
-                      onPressed: () {
-                        if (dangChonXoa) {
-                          huyChonXoa();
-                        } else {
-                          widget.onDataChanged?.call(danhSachChi);
-                          Navigator.pop(context, danhSachChi);
-                        }
-                      },
-                    ),
-                  ),
                   Column(
                     children: [
                       const SizedBox(height: 4),
@@ -1791,6 +2420,25 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
                       ),
                     ],
                   ),
+                  Positioned(
+                    top: 12,
+                    left: edge,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
+                      onPressed: () {
+                        if (dangChonXoa) {
+                          huyChonXoa();
+                        } else {
+                          widget.onDataChanged?.call(danhSachChi);
+                          Navigator.pop(context, danhSachChi);
+                        }
+                      },
+                    ),
+                  ),
                 ],
               );
             },
@@ -1814,8 +2462,9 @@ class _ChiTieuTheoMucScreenState extends State<ChiTieuTheoMucScreen> {
 
 class XacNhanXoaScreen extends StatelessWidget {
   final int soTien;
+  final bool isIncome;
 
-  const XacNhanXoaScreen({super.key, required this.soTien});
+  const XacNhanXoaScreen({super.key, required this.soTien, this.isIncome = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1832,10 +2481,12 @@ class XacNhanXoaScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _appLanguage == 'vi' ? 'Bạn có muốn xóa khoản chi' : 'Delete expense',
+                      isIncome
+                          ? (_appLanguage == 'vi' ? 'Bạn có muốn xóa khoản thu' : 'Delete income')
+                          : (_appLanguage == 'vi' ? 'Bạn có muốn xóa khoản chi' : 'Delete expense'),
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 14,
+                        fontSize: 13,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -1844,8 +2495,8 @@ class XacNhanXoaScreen extends StatelessWidget {
                       fit: BoxFit.scaleDown,
                       child: Text(
                         formatAmountWithCurrency(soTien),
-                        style: const TextStyle(
-                          color: Color(0xFFF08080),
+                        style: TextStyle(
+                          color: isIncome ? const Color(0xFF4CAF93) : const Color(0xFFF08080),
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
                         ),

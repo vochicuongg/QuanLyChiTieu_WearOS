@@ -63,6 +63,24 @@ class VFinanceTileService : TileService() {
         // Convert to USD if currency is $ (keep Double for precision)
         val todayTotalUsd = todayTotalVnd * exchangeRate
         val todayTotal = if (currency == "$") todayTotalUsd.toLong() else todayTotalVnd
+
+        val todayIncomeVnd = if (isDataFromToday) {
+            try {
+                val incomeStr = prefs.getString("flutter.tile_today_income_v2", "0") ?: "0"
+                incomeStr.toLongOrNull() ?: 0L
+            } catch (e: Exception) {
+                0L
+            }
+        } else {
+            0L
+        }
+        val todayIncomeUsd = todayIncomeVnd * exchangeRate
+        val todayIncome = if (currency == "$") todayIncomeUsd.toLong() else todayIncomeVnd
+        
+        // Calculate remaining balance (income - expenses)
+        val remainingBalanceVnd = todayIncomeVnd - todayTotalVnd
+        val remainingBalanceUsd = todayIncomeUsd - todayTotalUsd
+        val remainingBalance = if (currency == "$") remainingBalanceUsd.toLong() else remainingBalanceVnd
         
         val language = prefs.getString("flutter.app_language", "vi") ?: "vi"
         val topExpensesJson = if (isDataFromToday) {
@@ -102,6 +120,7 @@ class VFinanceTileService : TileService() {
         } catch (e: Exception) { }
         
         val formattedAmount = formatCompact(todayTotal, language, currency, todayTotalUsd)
+        val formattedRemaining = formatCompact(kotlin.math.abs(remainingBalance), language, currency, kotlin.math.abs(if (currency == "$") remainingBalanceUsd else remainingBalanceVnd.toDouble()))
         val currencySymbol = if (currency == "$") "$" else "đ"
         val titleText = if (language == "vi") "Tổng chi tiêu hôm nay" else "Total spending today"
         val topLabel = if (language == "vi") "Chi tiêu lớn nhất" else "Top spending"
@@ -116,7 +135,7 @@ class VFinanceTileService : TileService() {
                             .setLayout(
                                 LayoutElementBuilders.Layout.Builder()
                                     .setRoot(createTileLayout(
-                                        titleText, formattedAmount, topLabel,
+                                        titleText, formattedAmount, formattedRemaining, remainingBalance >= 0, topLabel,
                                         expense1Name, expense1Amt,
                                         expense2Name, expense2Amt,
                                         currencySymbol
@@ -173,6 +192,8 @@ class VFinanceTileService : TileService() {
     private fun createTileLayout(
         title: String, 
         amount: String,
+        remainingAmount: String,
+        isPositive: Boolean,
         topLabel: String,
         exp1Name: String,
         exp1Amt: String,
@@ -259,6 +280,22 @@ class VFinanceTileService : TileService() {
                         LayoutElementBuilders.FontStyle.Builder()
                             .setSize(sp(24f))
                             .setColor(argb(0xFFF08080.toInt()))
+                            .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
+                            .build()
+                    )
+                    .build()
+            )
+            .addContent(LayoutElementBuilders.Spacer.Builder().setHeight(dp(2f)).build())
+            .addContent(
+                LayoutElementBuilders.Text.Builder()
+                    .setText(
+                        (if (isPositive) "+" else "-") + 
+                        (if (currencySymbol == "$") "$" + remainingAmount else remainingAmount + " đ")
+                    )
+                    .setFontStyle(
+                        LayoutElementBuilders.FontStyle.Builder()
+                            .setSize(sp(14f))
+                            .setColor(argb(if (isPositive) 0xFF4CAF93.toInt() else 0xFFF08080.toInt()))
                             .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
                             .build()
                     )
